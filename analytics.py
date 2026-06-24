@@ -232,7 +232,7 @@ def vs_enemy_hero() -> list:
 def dashboard_summary() -> dict:
     with get_conn() as conn:
         all_matches = _load_matches(conn)
-        latest_rank = conn.execute("SELECT tier, division FROM player_rank WHERE id=1").fetchone()
+        latest_rank = conn.execute("SELECT role, rank_tier, rank_division FROM player_rank ORDER BY role").fetchall()
 
     total = len(all_matches)
     if total == 0:
@@ -266,5 +266,5 @@ def dashboard_summary() -> dict:
         "streak_type": streak_type,
         "best_hero": best_hero,
         "best_map": best_map,
-        "rank": dict(latest_rank) if latest_rank else None,
+        "ranks": [dict(r) for r in latest_rank] if latest_rank else [],
     }

@@ -201,6 +201,7 @@ async function loadDashboard() {
   document.getElementById('d-hero').textContent = dash.best_hero || '—';
   document.getElementById('d-map').textContent = dash.best_map || '—';
 
+  renderRanks(dash.ranks || []);
   renderSrChart(sr);
   renderMapChart(mapWr.slice(0, 8));
   renderHeroWrTable(heroWr.slice(0, 15));
@@ -273,17 +274,35 @@ function renderHeroWrTable(data) {
     </tr>`).join('')}</tbody></table>`;
 }
 
+function renderRanks(ranks) {
+  const el = document.getElementById('d-streak').closest('.dash-grid');
+  const existing = document.getElementById('rank-cards');
+  if (existing) existing.remove();
+  if (!ranks.length) return;
+  const div = document.createElement('div');
+  div.id = 'rank-cards';
+  div.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px';
+  div.innerHTML = ranks.map(r =>
+    `<div class="stat-card" style="flex:1;min-width:120px">
+       <div class="label">${r.role}</div>
+       <div class="value" style="font-size:17px">${r.rank_tier} ${r.rank_division}</div>
+     </div>`
+  ).join('');
+  el.after(div);
+}
+
 function renderBaselineTable(data) {
   const el = document.getElementById('baseline-table');
   if (!data.heroes || !data.heroes.length) {
     el.innerHTML = '<div class="loading">No baseline data. Go to Settings → Fetch Baseline.</div>';
     return;
   }
-  el.innerHTML = `<table><thead><tr><th>Hero</th><th>Playtime</th><th>Blizz WR</th></tr></thead>
-    <tbody>${data.heroes.slice(0,10).map(h => `<tr>
+  el.innerHTML = `<table><thead><tr><th>Hero</th><th>Playtime</th><th>Games</th><th>Blizz WR</th></tr></thead>
+    <tbody>${data.heroes.slice(0,12).map(h => `<tr>
       <td>${h.hero}</td>
       <td>${(h.playtime_pct||0).toFixed(1)}%</td>
-      <td>${h.win_rate != null ? pct(h.win_rate/100) : '—'}</td>
+      <td>${h.games_played||'—'}</td>
+      <td><span class="${h.win_rate ? wrClass(h.win_rate) : ''}">${h.win_rate != null ? pct(h.win_rate) : '—'}</span></td>
     </tr>`).join('')}</tbody></table>`;
 }
 

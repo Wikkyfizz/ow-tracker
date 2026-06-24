@@ -398,39 +398,73 @@ def create_session(notes: str = ""):
 async def fetch_baseline():
     import httpx
     settings = load_settings()
-    username = settings.get("username", "DROWZY")
+    battletag = settings.get("battletag") or settings.get("username", "DROWZY")
+
     async with httpx.AsyncClient(timeout=15) as client:
         try:
-            r = await client.get(f"https://overfast-api.tekrop.fr/players/{username}/stats/summary")
-            r.raise_for_status()
-            data = r.json()
+            stats_r = await client.get(f"https://overfast-api.tekrop.fr/players/{battletag}/stats/summary")
+            stats_r.raise_for_status()
+            stats = stats_r.json()
         except Exception as e:
-            raise HTTPException(502, f"OverFast API error: {e}")
+            raise HTTPException(502, f"OverFast stats error: {e}")
+
+        try:
+            profile_r = await client.get(f"https://overfast-api.tekrop.fr/players/{battletag}")
+            profile_r.raise_for_status()
+            profile = profile_r.json()
+        except Exception:
+            profile = {}
+
+    # heroes is a dict: {"genji": {games_played, games_won, winrate, time_played, ...}, ...}
+    heroes_dict = stats.get("heroes", {})
+    total_time = sum(h.get("time_played", 0) for h in heroes_dict.values()) or 1
+    now = datetime.utcnow().isoformat()
+
     with db.get_conn() as conn:
         conn.execute("DELETE FROM career_baseline")
-        heroes_data = data.get("heroes", [])
         conn.executemany(
             "INSERT INTO career_baseline (hero, playtime_pct, win_rate, games_played, fetched_at) VALUES (?,?,?,?,?)",
             [
                 (
-                    h.get("name", ""),
-                    h.get("time_played_pct", 0),
-                    h.get("win_percentage", None),
-                    h.get("games_played", None),
-                    datetime.utcnow().isoformat(),
+                    name.title().replace("_", " "),
+                    round(data.get("time_played", 0) / total_time * 100, 2),
+                    round(data.get("winrate", 0) / 100, 4) if data.get("winrate") is not None else None,
+                    data.get("games_played"),
+                    now,
                 )
-                for h in heroes_data
+                for name, data in heroes_dict.items()
             ],
         )
-    return {"heroes_fetched": len(heroes_data)}
+
+        # Store per-role ranks from profile
+        comp = profile.get("summary", {}).get("competitive", {}).get("pc", {})
+        rank_rows = []
+        role_map = {"tank": "Tank", "damage": "Damage", "support": "Support", "open": "Open Queue"}
+        for api_key, label in role_map.items():
+            role_data = comp.get(api_key)
+            if role_data:
+                rank_rows.append((
+                    label,
+                    role_data.get("division", "").title(),
+                    role_data.get("tier"),
+                    now,
+                ))
+        if rank_rows:
+            conn.execute("DELETE FROM player_rank")
+            conn.executemany(
+                "INSERT INTO player_rank (role, rank_tier, rank_division, fetched_at) VALUES (?,?,?,?)",
+                rank_rows,
+            )
+
+    return {"heroes_fetched": len(heroes_dict), "roles_fetched": len(rank_rows)}
 
 
 @app.get("/api/baseline")
 def get_baseline():
     with db.get_conn() as conn:
         rows = db.rows_to_list(conn.execute("SELECT * FROM career_baseline ORDER BY playtime_pct DESC").fetchall())
-        rank = db.rows_to_list(conn.execute("SELECT * FROM player_rank WHERE id=1").fetchall())
-    return {"heroes": rows, "rank": rank[0] if rank else None}
+        ranks = db.rows_to_list(conn.execute("SELECT * FROM player_rank ORDER BY role").fetchall())
+    return {"heroes": rows, "ranks": ranks}
 
 
 # ── API: parse (manual trigger) ───────────────────────────────────────────────

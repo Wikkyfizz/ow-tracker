@@ -159,9 +159,9 @@ CREATE TABLE IF NOT EXISTS career_baseline (
 );
 
 CREATE TABLE IF NOT EXISTS player_rank (
-    id              INTEGER PRIMARY KEY CHECK(id = 1),
-    tier            TEXT DEFAULT '',
-    division        INTEGER DEFAULT NULL,
+    role            TEXT PRIMARY KEY,
+    rank_tier       TEXT DEFAULT '',
+    rank_division   INTEGER DEFAULT NULL,
     fetched_at      DATETIME DEFAULT NULL
 );
 """
@@ -191,7 +191,7 @@ def _seed_if_empty(conn):
         "INSERT OR IGNORE INTO heroes (name, role, sub_role, primary_archetype) VALUES (?,?,?,?)",
         HEROES_SEED,
     )
-    conn.execute("INSERT OR IGNORE INTO player_rank (id) VALUES (1)")
+    pass  # player_rank seeded on first baseline fetch
 
 
 def rank_to_score(tier: str, division: int, pct: float) -> float:
