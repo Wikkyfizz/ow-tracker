@@ -103,15 +103,23 @@ function buildHeroLists() {
   renderBanChips();
 }
 
+function roleClass(role) {
+  return { Tank: 'tank', Damage: 'dps', Support: 'support' }[role] || 'unknown';
+}
+
 function renderHeroChipList(containerId, selectedArr, side) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
   heroes.forEach(h => {
     const selected = selectedArr.find(e => e.hero === h.name);
+    const rc = roleClass(h.role);
     const chip = document.createElement('div');
-    chip.className = 'hero-chip' + (selected ? ' selected' : '');
+    chip.className = `hero-chip role-${rc}` + (selected ? ' selected' : '');
     chip.dataset.hero = h.name;
-    chip.title = `${h.role} • ${h.sub_role} • ${h.primary_archetype}`;
+    chip.title = `${h.role} · ${h.sub_role} · ${h.primary_archetype}`;
+
+    const dot = document.createElement('span');
+    dot.className = `role-dot ${rc}`;
 
     const label = document.createElement('span');
     label.textContent = h.name;
@@ -120,18 +128,17 @@ function renderHeroChipList(containerId, selectedArr, side) {
     pctBadge.className = 'pct-badge';
     pctBadge.textContent = selected ? selected.pct + '%' : '100%';
 
+    chip.appendChild(dot);
     chip.appendChild(label);
     chip.appendChild(pctBadge);
 
     chip.addEventListener('click', (e) => {
       if (e.target === pctBadge && selectedArr.find(e => e.hero === h.name)) {
-        // cycle pct
         const entry = selectedArr.find(e => e.hero === h.name);
         const idx = PCT_CYCLE.indexOf(entry.pct);
         entry.pct = PCT_CYCLE[(idx + 1) % PCT_CYCLE.length];
         pctBadge.textContent = entry.pct + '%';
       } else {
-        // toggle selection
         const idx = selectedArr.findIndex(e => e.hero === h.name);
         if (idx >= 0) {
           selectedArr.splice(idx, 1);
@@ -282,13 +289,13 @@ function renderRanks(ranks) {
   const existing = document.getElementById('rank-cards');
   if (existing) existing.remove();
   if (!ranks.length) return;
+  const ROLE_CSS = { Tank: 'tank-card', Damage: 'damage-card', Support: 'support-card', 'Open Queue': 'open-card' };
   const div = document.createElement('div');
   div.id = 'rank-cards';
-  div.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px';
   div.innerHTML = ranks.map(r =>
-    `<div class="stat-card" style="flex:1;min-width:120px">
+    `<div class="stat-card ${ROLE_CSS[r.role] || ''}">
        <div class="label">${r.role}</div>
-       <div class="value" style="font-size:17px">${r.rank_tier} ${r.rank_division}</div>
+       <div class="value">${r.rank_tier} ${r.rank_division}</div>
      </div>`
   ).join('');
   el.after(div);
@@ -330,20 +337,19 @@ function renderBaselineSorted() {
 
   // Group by role in display order
   const ROLE_ORDER = ['Tank', 'Damage', 'Support', 'Unknown'];
+  const ROLE_RC = { Tank: 'tank', Damage: 'dps', Support: 'support', Unknown: 'unknown' };
   const grouped = {};
   ROLE_ORDER.forEach(r => grouped[r] = []);
   sorted.forEach(h => {
     const role = getHeroRole(h.hero);
-    (grouped[role] || (grouped['Unknown'] = grouped['Unknown'] || []));
     (grouped[role] || grouped['Unknown']).push(h);
   });
 
   const arrow = (col) => {
-    if (col !== baselineSortCol) return '<span style="color:var(--faint)">⇅</span>';
+    if (col !== baselineSortCol) return '<span style="color:var(--dim)">⇅</span>';
     return baselineSortDir === 'asc' ? '↑' : '↓';
   };
 
-  const thStyle = 'cursor:pointer;user-select:none;white-space:nowrap';
   const cols = [
     { key: 'hero',         label: 'Hero' },
     { key: 'playtime_pct', label: 'Playtime' },
@@ -352,21 +358,19 @@ function renderBaselineSorted() {
   ];
 
   let html = `<table><thead><tr>${cols.map(c =>
-    `<th style="${thStyle}" data-col="${c.key}">${c.label} ${arrow(c.key)}</th>`
+    `<th style="cursor:pointer;user-select:none;white-space:nowrap" data-col="${c.key}">${c.label} ${arrow(c.key)}</th>`
   ).join('')}</tr></thead><tbody>`;
-
-  const ROLE_COLORS = { Tank: '#38bdf8', Damage: '#f97316', Support: '#22c55e' };
 
   ROLE_ORDER.forEach(role => {
     const rows = grouped[role];
     if (!rows || !rows.length) return;
-    const color = ROLE_COLORS[role] || 'var(--muted)';
-    html += `<tr><td colspan="4" style="background:var(--surface);color:${color};font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:6px 10px;">${role}</td></tr>`;
+    const rc = ROLE_RC[role] || 'unknown';
+    html += `<tr class="role-row ${rc}"><td colspan="4">${role}</td></tr>`;
     rows.forEach(h => {
       html += `<tr>
         <td>${h.hero}</td>
-        <td>${(h.playtime_pct||0).toFixed(1)}%</td>
-        <td>${h.games_played||'—'}</td>
+        <td class="num">${(h.playtime_pct||0).toFixed(1)}%</td>
+        <td class="num">${h.games_played||'—'}</td>
         <td><span class="${h.win_rate != null ? wrClass(h.win_rate) : ''}">${h.win_rate != null ? pct(h.win_rate) : '—'}</span></td>
       </tr>`;
     });
@@ -420,9 +424,9 @@ async function loadHistory() {
       <td class="outcome-${m.outcome}">${m.outcome}</td>
       <td style="max-width:180px">${heroStr || '—'}</td>
       <td>${m.enemy_comp || '—'}</td>
-      <td>${numFmt(m.elims)}</td>
-      <td>${numFmt(m.deaths)}</td>
-      <td>${numFmt(m.damage)}</td>
+      <td class="num">${numFmt(m.elims)}</td>
+      <td class="num">${numFmt(m.deaths)}</td>
+      <td class="num">${numFmt(m.damage)}</td>
       <td style="font-size:12px">${rankStr}</td>
       <td>${m.stack_size > 1 ? '×'+m.stack_size : '—'}</td>
       <td><button class="btn btn-secondary btn-sm" onclick="deleteMatch(${m.id})">✕</button></td>
