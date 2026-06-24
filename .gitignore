@@ -1,0 +1,13 @@
+ow_tracker.db
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+inbox/
+parser/hero_icons/*.png

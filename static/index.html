@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OW Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav>
+  <h1>OW <span>Tracker</span></h1>
+  <button class="nav-btn active" data-page="dashboard">Dashboard</button>
+  <button class="nav-btn" data-page="add">Add Match</button>
+  <button class="nav-btn" data-page="queue">Queue <span id="queue-badge" class="badge" style="display:none">0</span></button>
+  <button class="nav-btn" data-page="history">History</button>
+  <button class="nav-btn" data-page="analytics">Analytics</button>
+  <button class="nav-btn" data-page="settings">Settings</button>
+  <div class="spacer"></div>
+  <span class="nav-status" id="nav-status"></span>
+</nav>
+
+<main>
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="dash-grid" id="stat-cards">
+    <div class="stat-card"><div class="label">Total Games</div><div class="value" id="d-total">—</div></div>
+    <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="d-wr">—</div><div class="sub" id="d-wr-sub"></div></div>
+    <div class="stat-card"><div class="label">Last 20</div><div class="value" id="d-wr20">—</div></div>
+    <div class="stat-card"><div class="label">Streak</div><div class="value" id="d-streak">—</div></div>
+    <div class="stat-card"><div class="label">Best Hero</div><div class="value" id="d-hero" style="font-size:18px">—</div></div>
+    <div class="stat-card"><div class="label">Best Map</div><div class="value" id="d-map" style="font-size:18px">—</div></div>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+    <div class="card">
+      <h2>SR Timeline</h2>
+      <div class="chart-wrap"><canvas id="sr-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Win Rate by Map (top 8)</h2>
+      <div class="chart-wrap"><canvas id="map-chart"></canvas></div>
+    </div>
+  </div>
+  <div style="margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+    <div class="card">
+      <h2>Baseline (OverFast)</h2>
+      <div id="baseline-table"><div class="loading">No baseline data. Go to Settings → Fetch Baseline.</div></div>
+    </div>
+    <div class="card">
+      <h2>Hero Win Rates (weighted)</h2>
+      <div id="hero-wr-table" class="table-wrap"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MATCH -->
+<div class="page" id="page-add">
+  <div class="card" style="max-width:860px">
+    <h2>Add Match</h2>
+    <div class="alert alert-info" id="parse-hint">Tip: Drop a screenshot in your inbox folder and it'll appear in the Queue tab pre-filled.</div>
+
+    <form id="match-form" style="margin-top:14px">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Map *</label>
+          <select id="f-map" required></select>
+        </div>
+        <div class="form-group">
+          <label>Outcome *</label>
+          <select id="f-outcome" required>
+            <option value="">Select…</option>
+            <option>Win</option>
+            <option>Loss</option>
+            <option>Draw</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date / Time</label>
+          <input type="datetime-local" id="f-played-at">
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <label>My Heroes (click to select, click pct to cycle)</label>
+        <div class="hero-list" id="f-my-heroes"></div>
+      </div>
+
+      <div style="margin-top:14px">
+        <label>Enemy Heroes</label>
+        <div class="hero-list" id="f-enemy-heroes"></div>
+      </div>
+
+      <div style="margin-top:14px">
+        <label>Bans (optional)</label>
+        <div class="hero-list" id="f-bans"></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <label style="display:block;margin-bottom:6px">Rank (optional)</label>
+        <div class="rank-row">
+          <div class="form-group">
+            <label>Tier</label>
+            <select id="f-rank-tier">
+              <option value="">—</option>
+              <option>Bronze</option><option>Silver</option><option>Gold</option>
+              <option>Platinum</option><option>Diamond</option><option>Master</option>
+              <option>Grandmaster</option><option>Champion</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Division</label>
+            <select id="f-rank-div">
+              <option value="">—</option>
+              <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>%</label>
+            <input type="number" id="f-rank-pct" min="0" max="100" step="1" placeholder="0–100">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:16px">
+        <div class="form-group"><label>Elims</label><input type="number" id="f-elims" min="0"></div>
+        <div class="form-group"><label>Deaths</label><input type="number" id="f-deaths" min="0"></div>
+        <div class="form-group"><label>Assists</label><input type="number" id="f-assists" min="0"></div>
+        <div class="form-group"><label>Damage</label><input type="number" id="f-damage" min="0"></div>
+        <div class="form-group"><label>Healing</label><input type="number" id="f-healing" min="0"></div>
+        <div class="form-group"><label>Mitigation</label><input type="number" id="f-mitigation" min="0"></div>
+        <div class="form-group"><label>Game Length (s)</label><input type="number" id="f-game-length" min="0"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label>Notes</label>
+        <textarea id="f-notes" placeholder="What went well? What to improve?"></textarea>
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:8px">
+        <button type="submit" class="btn btn-primary">Save Match</button>
+        <button type="button" class="btn btn-secondary" id="form-clear-btn">Clear</button>
+      </div>
+      <div id="form-msg" style="margin-top:8px; font-size:13px;"></div>
+    </form>
+  </div>
+</div>
+
+<!-- QUEUE -->
+<div class="page" id="page-queue">
+  <div id="queue-empty" class="empty">
+    <h3>No matches in queue</h3>
+    <p>Screenshot a Game Reports tab with ShareX → it will appear here automatically.</p>
+  </div>
+  <div id="queue-list"></div>
+</div>
+
+<!-- HISTORY -->
+<div class="page" id="page-history">
+  <div class="filters">
+    <div class="form-group"><label>Map</label><select id="h-map-filter"><option value="">All Maps</option></select></div>
+    <div class="form-group"><label>Outcome</label>
+      <select id="h-outcome-filter">
+        <option value="">All</option><option>Win</option><option>Loss</option><option>Draw</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Hero</label><select id="h-hero-filter"><option value="">All Heroes</option></select></div>
+    <button class="btn btn-secondary btn-sm" id="h-filter-btn" style="align-self:flex-end">Filter</button>
+  </div>
+  <div class="card table-wrap">
+    <table id="history-table">
+      <thead><tr>
+        <th>#</th><th>Date</th><th>Map</th><th>Outcome</th><th>My Heroes</th>
+        <th>Enemy Comp</th><th>E</th><th>D</th><th>DMG</th><th>Rank</th><th>Stack</th><th></th>
+      </tr></thead>
+      <tbody id="history-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ANALYTICS -->
+<div class="page" id="page-analytics">
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="a-heroes">Heroes</button>
+    <button class="tab-btn" data-tab="a-maps">Maps</button>
+    <button class="tab-btn" data-tab="a-comp">Comp Matchups</button>
+    <button class="tab-btn" data-tab="a-enemy">vs Enemy</button>
+    <button class="tab-btn" data-tab="a-teammates">Teammates</button>
+    <button class="tab-btn" data-tab="a-bans">Bans</button>
+    <button class="tab-btn" data-tab="a-stack">Stack Size</button>
+  </div>
+
+  <div class="tab-panel active" id="a-heroes">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Hero</th><th>Win Rate</th><th>Weighted Games</th><th></th></tr></thead>
+      <tbody id="t-hero-wr"></tbody>
+    </table></div>
+  </div>
+
+  <div class="tab-panel" id="a-maps">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Map</th><th>Mode</th><th>Comp Affinity</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
+      <tbody id="t-map-wr"></tbody>
+    </table></div>
+  </div>
+
+  <div class="tab-panel" id="a-comp">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>My Comp</th><th>vs Enemy Comp</th><th>Win Rate</th><th>Games</th></tr></thead>
+      <tbody id="t-comp-mu"></tbody>
+    </table></div>
+  </div>
+
+  <div class="tab-panel" id="a-enemy">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+      <div class="card table-wrap">
+        <h2>Win Rate vs Enemy Hero</h2>
+        <table><thead><tr><th>Enemy Hero</th><th>Win Rate</th><th>Games</th></tr></thead>
+        <tbody id="t-vs-hero"></tbody></table>
+      </div>
+      <div class="card table-wrap">
+        <h2>Hero × Map Win Rates</h2>
+        <table><thead><tr><th>Hero</th><th>Map</th><th>Affinity</th><th>Win Rate</th><th>W.Games</th></tr></thead>
+        <tbody id="t-hero-map"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="a-teammates">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Player</th><th>Alias</th><th>Win Rate</th><th>Games</th></tr></thead>
+      <tbody id="t-teammates"></tbody>
+    </table></div>
+  </div>
+
+  <div class="tab-panel" id="a-bans">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Hero</th><th>Times Banned</th><th>Ban Rate</th><th>Win Rate When Banned</th></tr></thead>
+      <tbody id="t-bans"></tbody>
+    </table></div>
+  </div>
+
+  <div class="tab-panel" id="a-stack">
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Stack Size</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
+      <tbody id="t-stack"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="page" id="page-settings">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; max-width:900px">
+    <div class="card">
+      <h2>General</h2>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>OW2 Username (for OCR row detection)</label>
+        <input type="text" id="s-username" placeholder="DROWZY">
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label>Inbox Folder (ShareX saves here)</label>
+        <input type="text" id="s-inbox" placeholder="C:\OW-Tracker\inbox">
+      </div>
+      <button class="btn btn-primary" id="s-save-btn">Save Settings</button>
+      <div id="s-msg" style="margin-top:8px; font-size:13px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Tracked Players</h2>
+      <div id="tracked-list" style="margin-bottom:12px"></div>
+      <div style="display:flex; gap:8px; margin-bottom:8px">
+        <input type="text" id="s-player-name" placeholder="In-game name">
+        <input type="text" id="s-player-alias" placeholder="Alias (Luke)">
+      </div>
+      <button class="btn btn-secondary btn-sm" id="s-add-player-btn">+ Add Player</button>
+    </div>
+
+    <div class="card">
+      <h2>Map Comp Affinities</h2>
+      <div class="table-wrap"><table id="map-config-table">
+        <thead><tr><th>Map</th><th>Mode</th><th>Affinity</th><th></th></tr></thead>
+        <tbody id="map-config-body"></tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h2>OverFast Baseline</h2>
+      <p style="color:var(--muted); margin-bottom:12px; font-size:13px">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
+      <button class="btn btn-primary" id="baseline-fetch-btn">Fetch Baseline</button>
+      <div id="baseline-msg" style="margin-top:8px; font-size:13px;"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+watchdog
+Pillow
+opencv-python
+pytesseract
+httpx
