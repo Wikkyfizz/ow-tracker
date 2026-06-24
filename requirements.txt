@@ -6,3 +6,4 @@ Pillow
 opencv-python
 pytesseract
 httpx
+python-multipart

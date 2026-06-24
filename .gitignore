@@ -1,4 +1,6 @@
 ow_tracker.db
+venv/
+inbox_queue.json
 __pycache__/
 *.py[cod]
 *.pyo
