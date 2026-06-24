@@ -5,6 +5,9 @@ let enemySelectedHeroes = [];
 let selectedBans = [];
 let srChart = null, mapChart = null;
 const PCT_CYCLE = [100, 75, 50, 25];
+let baselineData = [];
+let baselineSortCol = 'playtime_pct';
+let baselineSortDir = 'desc';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 const api = {
@@ -291,19 +294,100 @@ function renderRanks(ranks) {
   el.after(div);
 }
 
+// Normalize hero name for role lookup: strip punctuation/spaces, lowercase
+function heroSlug(name) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function getHeroRole(heroName) {
+  const slug = heroSlug(heroName);
+  const match = heroes.find(h => heroSlug(h.name) === slug);
+  return match ? match.role : 'Unknown';
+}
+
 function renderBaselineTable(data) {
   const el = document.getElementById('baseline-table');
   if (!data.heroes || !data.heroes.length) {
     el.innerHTML = '<div class="loading">No baseline data. Go to Settings → Fetch Baseline.</div>';
     return;
   }
-  el.innerHTML = `<table><thead><tr><th>Hero</th><th>Playtime</th><th>Games</th><th>Blizz WR</th></tr></thead>
-    <tbody>${data.heroes.slice(0,12).map(h => `<tr>
-      <td>${h.hero}</td>
-      <td>${(h.playtime_pct||0).toFixed(1)}%</td>
-      <td>${h.games_played||'—'}</td>
-      <td><span class="${h.win_rate ? wrClass(h.win_rate) : ''}">${h.win_rate != null ? pct(h.win_rate) : '—'}</span></td>
-    </tr>`).join('')}</tbody></table>`;
+  baselineData = data.heroes;
+  renderBaselineSorted();
+}
+
+function renderBaselineSorted() {
+  const el = document.getElementById('baseline-table');
+
+  // Sort
+  const sorted = [...baselineData].sort((a, b) => {
+    let av = a[baselineSortCol], bv = b[baselineSortCol];
+    if (baselineSortCol === 'hero') { av = av || ''; bv = bv || ''; }
+    else { av = av ?? -1; bv = bv ?? -1; }
+    if (av < bv) return baselineSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return baselineSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Group by role in display order
+  const ROLE_ORDER = ['Tank', 'Damage', 'Support', 'Unknown'];
+  const grouped = {};
+  ROLE_ORDER.forEach(r => grouped[r] = []);
+  sorted.forEach(h => {
+    const role = getHeroRole(h.hero);
+    (grouped[role] || (grouped['Unknown'] = grouped['Unknown'] || []));
+    (grouped[role] || grouped['Unknown']).push(h);
+  });
+
+  const arrow = (col) => {
+    if (col !== baselineSortCol) return '<span style="color:var(--faint)">⇅</span>';
+    return baselineSortDir === 'asc' ? '↑' : '↓';
+  };
+
+  const thStyle = 'cursor:pointer;user-select:none;white-space:nowrap';
+  const cols = [
+    { key: 'hero',         label: 'Hero' },
+    { key: 'playtime_pct', label: 'Playtime' },
+    { key: 'games_played', label: 'Games' },
+    { key: 'win_rate',     label: 'Win Rate' },
+  ];
+
+  let html = `<table><thead><tr>${cols.map(c =>
+    `<th style="${thStyle}" data-col="${c.key}">${c.label} ${arrow(c.key)}</th>`
+  ).join('')}</tr></thead><tbody>`;
+
+  const ROLE_COLORS = { Tank: '#38bdf8', Damage: '#f97316', Support: '#22c55e' };
+
+  ROLE_ORDER.forEach(role => {
+    const rows = grouped[role];
+    if (!rows || !rows.length) return;
+    const color = ROLE_COLORS[role] || 'var(--muted)';
+    html += `<tr><td colspan="4" style="background:var(--surface);color:${color};font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:6px 10px;">${role}</td></tr>`;
+    rows.forEach(h => {
+      html += `<tr>
+        <td>${h.hero}</td>
+        <td>${(h.playtime_pct||0).toFixed(1)}%</td>
+        <td>${h.games_played||'—'}</td>
+        <td><span class="${h.win_rate != null ? wrClass(h.win_rate) : ''}">${h.win_rate != null ? pct(h.win_rate) : '—'}</span></td>
+      </tr>`;
+    });
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  // Attach sort handlers
+  el.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (col === baselineSortCol) {
+        baselineSortDir = baselineSortDir === 'desc' ? 'asc' : 'desc';
+      } else {
+        baselineSortCol = col;
+        baselineSortDir = col === 'hero' ? 'asc' : 'desc';
+      }
+      renderBaselineSorted();
+    });
+  });
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
@@ -577,6 +661,7 @@ function numOrNull(id) {
 let settingsData = {};
 async function loadSettings() {
   settingsData = await api.get('/api/settings');
+  document.getElementById('s-battletag').value = settingsData.battletag || '';
   document.getElementById('s-username').value = settingsData.username || '';
   document.getElementById('s-inbox').value = settingsData.inbox_folder || '';
   renderTrackedPlayers();
@@ -596,6 +681,7 @@ function renderTrackedPlayers() {
 }
 
 document.getElementById('s-save-btn').addEventListener('click', async () => {
+  settingsData.battletag = document.getElementById('s-battletag').value;
   settingsData.username = document.getElementById('s-username').value;
   settingsData.inbox_folder = document.getElementById('s-inbox').value;
   const result = await api.put('/api/settings', settingsData);

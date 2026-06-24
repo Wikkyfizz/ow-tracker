@@ -61,6 +61,7 @@ class TrackedPlayer(BaseModel):
 
 class Settings(BaseModel):
     username: str = "DROWZY"
+    battletag: str = ""
     inbox_folder: str = "C:\\OW-Tracker\\inbox"
     tracked_players: list[TrackedPlayer] = []
 

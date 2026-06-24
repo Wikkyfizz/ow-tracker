@@ -402,7 +402,7 @@ async def fetch_baseline():
 
     async with httpx.AsyncClient(timeout=15) as client:
         try:
-            stats_r = await client.get(f"https://overfast-api.tekrop.fr/players/{battletag}/stats/summary")
+            stats_r = await client.get(f"https://overfast-api.tekrop.fr/players/{battletag}/stats/summary?gamemode=competitive")
             stats_r.raise_for_status()
             stats = stats_r.json()
         except Exception as e:
