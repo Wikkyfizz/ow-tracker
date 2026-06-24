@@ -61,6 +61,7 @@ HEROES_SEED = [
     ("Bastion",         "Damage", "Projectile", "Poke"),
     ("Cassidy",         "Damage", "Hitscan",    "Flex"),
     ("Echo",            "Damage", "Projectile", "Dive"),
+    ("Anran",           "Damage", "Flanker",    "Dive"),
     ("Freja",           "Damage", "Hitscan",    "Dive"),
     ("Genji",           "Damage", "Projectile", "Dive"),
     ("Hanzo",           "Damage", "Projectile", "Poke"),
