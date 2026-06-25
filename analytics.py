@@ -229,6 +229,53 @@ def vs_enemy_hero() -> list:
     )
 
 
+def _role_matchups(matches, role_of, archetype_of, role, grain="hero"):
+    """Matchup win-rate for a single role: my hero of `role` vs the enemy's hero
+    of the same role, weighted by both sides' playtime (pct). `grain` selects the
+    enemy axis: "hero" (vs specific enemy hero) or "archetype" (vs enemy hero's
+    archetype, multi-archetype heroes split equally — same logic as derive_comp).
+    Tank players care most about this matchup; other roles can ignore it.
+    """
+    stats = defaultdict(lambda: {"weighted_wins": 0.0, "weighted_games": 0.0})
+    for m in matches:
+        ov = _outcome_val(m["outcome"])
+        mine = [(e["hero"], e["pct"] / 100.0) for e in json.loads(m["my_heroes"] or "[]")
+                if role_of.get(e["hero"]) == role]
+        enemy = [(e["hero"], e["pct"] / 100.0) for e in json.loads(m["enemy_heroes"] or "[]")
+                 if role_of.get(e["hero"]) == role]
+        for my_hero, mw in mine:
+            for enemy_hero, ew in enemy:
+                if grain == "archetype":
+                    labels = [a for a in archetype_of.get(enemy_hero, "Flex").split("|")]
+                    buckets = [(lbl, ew / len(labels)) for lbl in labels]
+                else:
+                    buckets = [(enemy_hero, ew)]
+                for key, kw in buckets:
+                    w = mw * kw
+                    stats[(my_hero, key)]["weighted_wins"] += w * ov
+                    stats[(my_hero, key)]["weighted_games"] += w
+    result = []
+    for (my_hero, vs), s in stats.items():
+        if s["weighted_games"] < MIN_WEIGHTED_GAMES:
+            continue
+        result.append({
+            "my_hero": my_hero,
+            "vs": vs,
+            "win_rate": round(s["weighted_wins"] / s["weighted_games"], 3),
+            "weighted_games": round(s["weighted_games"], 1),
+        })
+    return sorted(result, key=lambda x: (x["my_hero"], -x["weighted_games"]))
+
+
+def role_matchups(role: str = "Tank", grain: str = "hero") -> list:
+    with get_conn() as conn:
+        matches = _load_matches(conn)
+        role_of = {r["name"]: r["role"] for r in conn.execute("SELECT name, role FROM heroes")}
+        archetype_of = {r["name"]: r["primary_archetype"]
+                        for r in conn.execute("SELECT name, primary_archetype FROM heroes")}
+    return _role_matchups(matches, role_of, archetype_of, role, grain)
+
+
 def dashboard_summary() -> dict:
     with get_conn() as conn:
         all_matches = _load_matches(conn)

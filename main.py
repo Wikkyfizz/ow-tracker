@@ -321,6 +321,11 @@ def api_vs_enemy_hero():
     return analytics.vs_enemy_hero()
 
 
+@app.get("/api/analytics/role-matchups")
+def api_role_matchups(role: str = "Tank", grain: str = "hero"):
+    return analytics.role_matchups(role, grain)
+
+
 # ── API: maps ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/maps")
