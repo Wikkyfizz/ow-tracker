@@ -12,4 +12,5 @@ dist/
 build/
 .pytest_cache/
 inbox/
-parser/hero_icons/*.png
+# Hero icons are intentionally committed so the tool works out-of-the-box.
+# Regenerate / update them with: python fetch_icons.py

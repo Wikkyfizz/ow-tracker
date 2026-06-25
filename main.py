@@ -156,10 +156,11 @@ def list_matches(
 def create_match(body: MatchCreate):
     with db.get_conn() as conn:
         archetypes = db.hero_archetypes(conn)
+        roles = db.hero_roles(conn)
         my_hero_names = [e.hero for e in body.my_heroes]
         enemy_hero_names = [e.hero for e in body.enemy_heroes]
-        my_comp = body.my_comp or db.derive_comp(my_hero_names, archetypes)
-        enemy_comp = body.enemy_comp or db.derive_comp(enemy_hero_names, archetypes)
+        my_comp = body.my_comp or db.derive_comp(my_hero_names, archetypes, roles)
+        enemy_comp = body.enemy_comp or db.derive_comp(enemy_hero_names, archetypes, roles)
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)
@@ -216,8 +217,9 @@ def update_match(match_id: int, body: MatchUpdate):
         if not existing:
             raise HTTPException(404, "Match not found")
         archetypes = db.hero_archetypes(conn)
-        my_comp = body.my_comp or db.derive_comp([e.hero for e in body.my_heroes], archetypes)
-        enemy_comp = body.enemy_comp or db.derive_comp([e.hero for e in body.enemy_heroes], archetypes)
+        roles = db.hero_roles(conn)
+        my_comp = body.my_comp or db.derive_comp([e.hero for e in body.my_heroes], archetypes, roles)
+        enemy_comp = body.enemy_comp or db.derive_comp([e.hero for e in body.enemy_heroes], archetypes, roles)
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)

@@ -78,6 +78,9 @@ HEROES_SEED = [
     ("Tracer",          "Damage", "Flanker",    "Dive"),
     ("Venture",         "Damage", "Projectile", "Dive"),
     ("Widowmaker",      "Damage", "Sniper",     "Poke"),
+    ("Emre",            "Damage", "Hitscan",    "Poke"),
+    ("Shion",           "Damage", "Flex",       "Dive"),
+    ("Vendetta",        "Damage", "Flex",       "Dive"),
     # Support
     ("Ana",             "Support", "Healer",    "Poke"),
     ("Baptiste",        "Support", "Healer",    "Flex"),
@@ -90,6 +93,9 @@ HEROES_SEED = [
     ("Mercy",           "Support", "Healer",    "Flex"),
     ("Moira",           "Support", "Defensive", "Brawl"),
     ("Zenyatta",        "Support", "Healer",    "Poke"),
+    ("Mizuki",          "Support", "Flex Support", "Dive"),
+    ("Jetpack Cat",     "Support", "Flex Support", "Flex"),
+    ("Wuyang",          "Support", "Main Support", "Flex"),
 ]
 
 SCHEMA = """
@@ -210,19 +216,31 @@ def hero_archetypes(conn) -> dict:
     return {r["name"]: r["primary_archetype"] for r in rows}
 
 
-def derive_comp(hero_names: list, archetypes: dict) -> str:
-    from collections import Counter
-    ats = [archetypes.get(h, "Flex") for h in hero_names]
-    if not ats:
-        return ""
-    counts = Counter(ats)
-    top_name, top_count = counts.most_common(1)[0]
-    if top_count >= 3:
-        return top_name
-    for label in ("Dive", "Brawl", "Poke"):
-        if counts.get(label, 0) >= 2:
-            return label
-    return "Mixed"
+def hero_roles(conn) -> dict:
+    rows = conn.execute("SELECT name, role FROM heroes").fetchall()
+    return {r["name"]: r["role"] for r in rows}
+
+
+# Comp identity is weighted toward the tank pick, which most defines whether a
+# team plays Dive / Brawl / Poke. Weights are per hero; a standard 1-2-2 comp
+# sums to 1.0 (Tank 0.40 + 2x Damage 0.15 + 2x Support 0.15).
+COMP_ROLE_WEIGHTS = {"Tank": 0.40, "Damage": 0.15, "Support": 0.15}
+
+
+def derive_comp(hero_names: list, archetypes: dict, roles: dict) -> str:
+    from collections import defaultdict
+    weights = defaultdict(float)
+    for h in hero_names:
+        arch = archetypes.get(h, "Flex")
+        if arch == "Flex":
+            continue  # flexible picks don't commit the team to a comp identity
+        weights[arch] += COMP_ROLE_WEIGHTS.get(roles.get(h, "Damage"), 0.15)
+    if not weights:
+        return "Mixed"
+    ranked = sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return "Mixed"  # no dominant archetype
+    return ranked[0][0]
 
 
 def rows_to_list(rows) -> list:
