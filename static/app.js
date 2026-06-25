@@ -714,23 +714,25 @@ function removeTrackedPlayer(name) {
 
 async function loadMapConfig() {
   const tbody = document.getElementById('map-config-body');
-  tbody.innerHTML = maps.map(m =>
-    `<tr>
+  tbody.innerHTML = maps.map(m => {
+    const current = (m.comp_affinity || 'Neutral').split('|');
+    const boxes = ['Dive','Poke','Brawl'].map(a =>
+      `<label style="margin-right:10px;white-space:nowrap">
+         <input type="checkbox" value="${a}"${current.includes(a) ? ' checked' : ''}> ${a}</label>`
+    ).join('');
+    return `<tr>
        <td>${m.name}</td><td style="color:var(--muted)">${m.game_mode}</td>
-       <td>
-         <select data-map="${m.name}" class="map-affinity-sel" style="padding:4px 6px">
-           ${['Dive','Poke','Brawl','Neutral'].map(a =>
-             `<option${m.comp_affinity===a?' selected':''}>${a}</option>`).join('')}
-         </select>
-       </td>
-       <td><button class="btn btn-secondary btn-sm" onclick="saveMapAffinity('${m.name}')">Save</button></td>
-     </tr>`
-  ).join('');
+       <td>${boxes}<span style="color:var(--muted);font-size:12px">none = Neutral</span></td>
+       <td><button class="btn btn-secondary btn-sm" data-map="${m.name}" onclick="saveMapAffinity(this)">Save</button></td>
+     </tr>`;
+  }).join('');
 }
 
-async function saveMapAffinity(mapName) {
-  const sel = document.querySelector(`[data-map="${mapName}"]`);
-  await api.put(`/api/maps/${encodeURIComponent(mapName)}`, {comp_affinity: sel.value, notes: ''});
+async function saveMapAffinity(btn) {
+  const mapName = btn.dataset.map;
+  const checked = [...btn.closest('tr').querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+  const affinity = checked.length ? checked.join('|') : 'Neutral';
+  await api.put(`/api/maps/${encodeURIComponent(mapName)}`, {comp_affinity: affinity});
   maps = await api.get('/api/maps');
   Object.keys(analyticsLoaded).forEach(k => delete analyticsLoaded[k]);
 }

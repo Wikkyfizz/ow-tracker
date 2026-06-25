@@ -1,0 +1,53 @@
+name,role,sub_role,primary_archetype
+Anran,Damage,Flanker,Dive
+Ashe,Damage,Hitscan,Poke
+Bastion,Damage,Hitscan,Poke|Brawl
+Cassidy,Damage,Hitscan,Brawl
+Echo,Damage,Projectile,Dive|Poke
+Emre,Damage,Hitscan,Poke|Brawl
+Freja,Damage,Hitscan,Flex
+Genji,Damage,Projectile,Dive|Brawl
+Hanzo,Damage,Projectile,Poke
+Junkrat,Damage,Projectile,Flex
+Mei,Damage,Projectile,Brawl
+Pharah,Damage,Projectile,Poke
+Reaper,Damage,Hitscan,Dive|Brawl
+Shion,Damage,Flex,Flex
+Sierra,Damage,Hitscan,Poke
+Sojourn,Damage,Hitscan,Flex
+Soldier: 76,Damage,Hitscan,Poke
+Sombra,Damage,hitscan,Dive|Brawl
+Symmetra,Damage,flex,Flex
+Torbjörn,Damage,Hitscan,Poke|Brawl
+Tracer,Damage,Flanker,Flex
+Vendetta,Damage,Flex,Dive|Brawl
+Venture,Damage,Projectile,Dive|Brawl
+Widowmaker,Damage,Sniper,Poke
+Ana,Support,flex,Flex
+Baptiste,Support,flex,Poke|Brawl
+Brigitte,Support,Main Support,Poke|Brawl
+Illari,Support,Flex Support,Poke
+Jetpack Cat,Support,Flex Support,Flex
+Juno,Support,Main Support,Dive|Brawl
+Kiriko,Support,Flex Support,Flex
+Lifeweaver,Support,Main Support,Flex
+Lucio,Support,Main Support,Dive|Brawl
+Mercy,Support,Healer,Poke
+Mizuki,Support,Flex Support,Flex
+Moira,Support,Defensive,Dive|Brawl
+Wuyang,Support,Main Support,Flex
+Zenyatta,Support,Healer,Dive|Poke
+D.Va,Tank,Initiator,Dive
+Domina,Tank,Stalwart,Poke|Brawl
+Doomfist,Tank,Initiator,Dive
+Hazard,Tank,Stalwart,Dive|Brawl
+Junker Queen,Tank,Stalwart,Brawl
+Mauga,Tank,Bruiser,Poke|Brawl
+Orisa,Tank,Bruiser,Poke|Brawl
+Ramattra,Tank,Stalwart,Brawl
+Reinhardt,Tank,Stalwart,Brawl
+Roadhog,Tank,Bruiser,Poke|Brawl
+Sigma,Tank,Stalwart,Poke
+Winston,Tank,Initiator,Dive
+Wrecking Ball,Tank,Initiator,Dive
+Zarya,Tank,Bruiser,Brawl

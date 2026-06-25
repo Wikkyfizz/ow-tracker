@@ -51,7 +51,7 @@ class MatchOut(MatchCreate):
 
 class MapUpdate(BaseModel):
     comp_affinity: str
-    notes: str = ""
+    notes: Optional[str] = None
 
 
 class TrackedPlayer(BaseModel):

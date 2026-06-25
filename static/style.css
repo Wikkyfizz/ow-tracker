@@ -305,6 +305,3 @@ select option { background: var(--surface); }
 /* ── Two-column grids ────────────────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
-
-/* ── Map config table ────────────────────────────────────────────────────── */
-.map-affinity-sel { padding: 4px 6px; font-size: 12px; }

@@ -331,11 +331,17 @@ def list_maps():
 
 @app.put("/api/maps/{name}")
 def update_map(name: str, body: MapUpdate):
+    affinity = db.normalize_affinity(body.comp_affinity)
+    if affinity is None:
+        raise HTTPException(400, f"Invalid comp_affinity: {body.comp_affinity!r}")
     with db.get_conn() as conn:
-        conn.execute(
-            "UPDATE maps SET comp_affinity=?, notes=? WHERE name=?",
-            (body.comp_affinity, body.notes, name),
-        )
+        if body.notes is None:
+            conn.execute("UPDATE maps SET comp_affinity=? WHERE name=?", (affinity, name))
+        else:
+            conn.execute(
+                "UPDATE maps SET comp_affinity=?, notes=? WHERE name=?",
+                (affinity, body.notes, name),
+            )
     return {"ok": True}
 
 

@@ -1,0 +1,29 @@
+name,game_mode,comp_affinity,notes
+Antarctic Peninsula,Control,Neutral,"Tight corridors, close range"
+Busan,Control,Neutral,Mixed geometry across three points
+Ilios,Control,Neutral,"Open sightlines, elevated positions"
+Lijiang Tower,Control,Brawl,"Vertical flanks, multiple levels"
+Nepal,Control,Neutral,Narrow shrine/temple chokepoints
+Oasis,Control,Neutral,"Open plazas, vertical movement"
+Samoa,Control,Brawl,Mixed beach/industrial geometry
+Circuit Royal,Escort,Poke,"Wide boulevards, long sightlines"
+Dorado,Escort,Dive,Tight street corridors
+Havana,Escort,Poke,"Long canal sightlines, open docks"
+Junkertown,Escort,Poke,Long first-stretch favors spam
+Rialto,Escort,Poke,"Open canals, bridge sight-lines"
+Route 66,Escort,Dive|Poke,"Gas station gauntlet, long stretches"
+Shambali Monastery,Escort,Poke|Brawl,"Long hallways, elevated sniper perches"
+Watchpoint: Gibraltar,Escort,Dive,"Long corridors, open final"
+New Junk City,Flashpoint,Neutral,Industrial open zones
+Suravasa,Flashpoint,Brawl,"Temple complex, mixed range"
+Blizzard World,Hybrid,Dive|Poke,Tight theme-park corridors
+Eichenwalde,Hybrid,Neutral,Castle gate chokepoints
+Hollywood,Hybrid,Poke|Brawl,Mixed open + tight interior
+King's Row,Hybrid,Brawl,"Narrow streets, close engagements"
+Midtown,Hybrid,Neutral,Wide avenues but flanking alleys
+Numbani,Hybrid,Dive,"Open courtyard, vertical building access"
+Paraíso,Hybrid,Dive,"Open carnival, vertical rooftops"
+Colosseo,Push,Neutral,"Open arena, high ground accessible"
+Esperança,Push,Dive|Poke,"Wide streets, long sightlines"
+New Queen Street,Push,Poke|Brawl,Narrow urban corridors
+Runasapi,Push,Neutral,Balanced ruins geometry
