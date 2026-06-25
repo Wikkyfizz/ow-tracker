@@ -305,3 +305,255 @@ select option { background: var(--surface); }
 /* ── Two-column grids ────────────────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ── Session nav button ───────────────────────────────────────────────────── */
+.session-nav-btn {
+  background: var(--faint); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text);
+  padding: 6px 16px; margin: auto 0 auto 8px;
+  font-family: var(--font-d); font-size: 14px; font-weight: 700;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.session-nav-btn:hover { background: var(--card-hi); border-color: var(--dim); }
+.session-nav-btn.live {
+  background: rgba(249,115,22,.12); border-color: var(--accent);
+  color: var(--accent); animation: pulse-border 2s infinite;
+}
+@keyframes pulse-border {
+  0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,.3); }
+  50%      { box-shadow: 0 0 0 4px rgba(249,115,22,.0); }
+}
+.nav-btn-hist {
+  font-size: 12px; padding: 0 10px; color: var(--dim);
+}
+.nav-btn-hist:hover { color: var(--muted); }
+
+/* ── Session page: idle ───────────────────────────────────────────────────── */
+.session-start-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 60px 20px; gap: 20px; max-width: 480px; margin: 0 auto;
+}
+.session-start-wrap h2 {
+  font-family: var(--font-d); font-size: 28px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+}
+.session-start-wrap .session-goal-form {
+  width: 100%; display: flex; flex-direction: column; gap: 10px;
+}
+.session-start-wrap label { font-size: 10px; }
+.session-start-wrap input[type=text],
+.session-start-wrap input[type=checkbox] { width: 100%; }
+.session-focus-row {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 13px;
+}
+.session-focus-row input[type=checkbox] { width: auto; }
+.session-recent { width: 100%; margin-top: 16px; }
+.session-recent h3 {
+  font-family: var(--font-d); font-size: 11px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
+  margin-bottom: 10px;
+}
+.sess-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 7px; padding: 12px 14px; cursor: pointer;
+  margin-bottom: 8px; transition: border-color .15s, background .15s;
+}
+.sess-card:hover { background: var(--card-hi); border-color: var(--dim); }
+.sess-card-title {
+  font-family: var(--font-d); font-size: 15px; font-weight: 700;
+  letter-spacing: 0.04em; margin-bottom: 4px;
+}
+.sess-card-meta {
+  display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted);
+}
+
+/* ── Session page: summary ────────────────────────────────────────────────── */
+.session-summary-wrap {
+  max-width: 480px; margin: 60px auto; text-align: center;
+}
+.session-summary-wrap h2 {
+  font-family: var(--font-d); font-size: 28px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 16px;
+}
+.session-summary-wrap #sess-summary-content { margin-bottom: 20px; }
+
+/* ── Session page: active ─────────────────────────────────────────────────── */
+.session-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
+}
+.sess-goal {
+  font-family: var(--font-d); font-size: 18px; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--text);
+}
+.sess-goal.sess-goal-empty { color: var(--dim); font-style: italic; }
+.session-controls { display: flex; align-items: center; gap: 12px; }
+.focus-toggle-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted); user-select: none;
+}
+.focus-toggle-row input[type=checkbox] { width: auto; }
+
+/* Stats bar */
+.sess-stats-bar {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.sess-stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 72px;
+}
+.sess-stat-label {
+  font-family: var(--font-d); font-size: 9px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
+}
+.sess-stat-val {
+  font-family: var(--font-d); font-size: 22px; font-weight: 700;
+  line-height: 1; color: var(--text);
+}
+#ss-timer {
+  font-family: var(--font-m); font-size: 16px; font-weight: 500;
+  color: var(--muted);
+}
+
+/* Session game grid: list + add card side by side */
+.sess-grid {
+  display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start;
+}
+@media (max-width: 960px) { .sess-grid { grid-template-columns: 1fr; } }
+
+.sess-games-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.sess-games-panel h3 {
+  font-family: var(--font-d); font-size: 11px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
+  margin-bottom: 10px;
+}
+.sess-game-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid rgba(26,39,64,.5);
+  font-size: 13px;
+}
+.sess-game-row:last-child { border-bottom: none; }
+.sess-game-map  { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess-game-heroes { flex: 1; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess-game-stats  { color: var(--dim); font-size: 11px; font-family: var(--font-m); white-space: nowrap; }
+
+/* Add game card */
+.sess-add-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px 16px;
+  display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
+}
+.sess-add-card h3 {
+  font-family: var(--font-d); font-size: 14px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.sess-queue-hint { font-size: 12px; color: var(--muted); }
+
+/* Focus mode hides annotated elements */
+.focus-mode .focus-hide { display: none !important; }
+
+/* Practiced dot */
+.practiced-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.practiced-dot.practiced-y  { background: var(--win); }
+.practiced-dot.practiced-so { background: var(--gold); }
+.practiced-dot.practiced-n  { background: var(--loss); }
+.practiced-dot.practiced-none { background: var(--dim); }
+
+/* ── Game entry modal ─────────────────────────────────────────────────────── */
+#game-modal {
+  display: none; position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+  align-items: flex-start; justify-content: center;
+  padding: 24px 16px; overflow-y: auto;
+}
+.modal-panel {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; width: 100%; max-width: 860px;
+  display: flex; flex-direction: column;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.modal-head h2 {
+  font-family: var(--font-d); font-size: 18px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text);
+  margin: 0;
+}
+.modal-close {
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 20px; line-height: 1; padding: 4px 8px;
+  transition: color .15s;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body {
+  padding: 20px; overflow-y: auto; max-height: calc(100vh - 200px);
+}
+.modal-ocr-banner {
+  display: none; background: rgba(240,192,64,.08);
+  border: 1px solid rgba(240,192,64,.3);
+  border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;
+  color: var(--gold); font-size: 12px;
+}
+.modal-section {
+  margin-bottom: 20px;
+}
+.modal-section-title {
+  font-family: var(--font-d); font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
+  margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.modal-foot-actions { display: flex; gap: 8px; }
+.modal-msg { font-size: 13px; color: var(--muted); }
+
+/* OCR field states */
+.field-ocr-loading input,
+.field-ocr-loading select { border-color: var(--accent2); animation: blink .8s step-start infinite; }
+.field-ocr-low input,
+.field-ocr-low select { border-color: var(--gold); }
+.field-ocr-low::after {
+  content: '⚠'; position: absolute; right: 8px; top: 50%;
+  transform: translateY(-50%); color: var(--gold); font-size: 11px;
+  pointer-events: none;
+}
+.form-group { position: relative; }
+@keyframes blink { 50% { opacity: .5; } }
+
+/* Practice check */
+.practice-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;
+}
+.practice-section-title {
+  font-family: var(--font-d); font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
+  margin-bottom: 6px;
+}
+.practice-goal-display {
+  font-size: 13px; color: var(--text); margin-bottom: 10px; font-style: italic;
+}
+.practice-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.practice-btn {
+  background: var(--faint); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--muted);
+  padding: 7px 18px; cursor: pointer;
+  font-family: var(--font-d); font-size: 14px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.practice-btn:hover { border-color: var(--dim); color: var(--text); }
+.practice-btn.selected[data-val="Y"]       { background: rgba(74,222,128,.12); border-color: var(--win);  color: var(--win);  }
+.practice-btn.selected[data-val="Sort of"] { background: rgba(240,192,64,.10); border-color: var(--gold); color: var(--gold); }
+.practice-btn.selected[data-val="N"]       { background: rgba(248,113,113,.1); border-color: var(--loss); color: var(--loss); }

@@ -79,9 +79,14 @@ CREATE TABLE IF NOT EXISTS heroes (
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    date    DATE NOT NULL,
-    notes   TEXT DEFAULT ''
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        DATE NOT NULL,
+    started_at  DATETIME DEFAULT NULL,
+    ended_at    DATETIME DEFAULT NULL,
+    goal        TEXT DEFAULT '',
+    focus_mode  INTEGER DEFAULT 0,
+    name        TEXT DEFAULT '',
+    notes       TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS matches (
@@ -112,8 +117,22 @@ CREATE TABLE IF NOT EXISTS matches (
     stack_size      INTEGER DEFAULT 1,
     screenshot_path TEXT DEFAULT '',
     data_source     TEXT DEFAULT 'manual',
+    practiced       TEXT DEFAULT NULL,
+    practice_notes  TEXT DEFAULT '',
+    is_historical   INTEGER DEFAULT 0,
     FOREIGN KEY (map) REFERENCES maps(name),
     FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE TABLE IF NOT EXISTS match_participants (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id        INTEGER NOT NULL,
+    player_name     TEXT DEFAULT '',
+    team            TEXT NOT NULL CHECK(team IN ('ally','enemy')),
+    heroes          TEXT NOT NULL DEFAULT '[]',
+    stats           TEXT NOT NULL DEFAULT '{}',
+    name_confidence REAL DEFAULT 1.0,
+    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tracked_players (
@@ -148,7 +167,33 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate_db(conn)
         _seed_if_empty(conn)
+
+
+def _migrate_db(conn):
+    def cols(table):
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    sess_cols = cols("sessions")
+    for col, defn in [
+        ("started_at", "DATETIME DEFAULT NULL"),
+        ("ended_at",   "DATETIME DEFAULT NULL"),
+        ("goal",       "TEXT DEFAULT ''"),
+        ("focus_mode", "INTEGER DEFAULT 0"),
+        ("name",       "TEXT DEFAULT ''"),
+    ]:
+        if col not in sess_cols:
+            conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {defn}")
+
+    match_cols = cols("matches")
+    for col, defn in [
+        ("practiced",      "TEXT DEFAULT NULL"),
+        ("practice_notes", "TEXT DEFAULT ''"),
+        ("is_historical",  "INTEGER DEFAULT 0"),
+    ]:
+        if col not in match_cols:
+            conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {defn}")
 
 
 def _seed_if_empty(conn):

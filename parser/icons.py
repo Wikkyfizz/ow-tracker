@@ -12,18 +12,18 @@ ICONS_DIR = Path(__file__).parent / "hero_icons"
 # Slot order (top to bottom): player 1–5 on each side.
 # These are placeholder values — tune once you have real screenshots.
 MY_TEAM_SLOTS = [
-    (110, 232, 190, 310),
-    (110, 318, 190, 396),
-    (110, 404, 190, 482),
-    (110, 490, 190, 568),
-    (110, 576, 190, 654),
+    (18, 244, 80, 296),
+    (18, 312, 80, 364),
+    (18, 380, 80, 432),
+    (18, 448, 80, 500),
+    (18, 516, 80, 568),
 ]
 ENEMY_TEAM_SLOTS = [
-    (970, 232, 1050, 310),
-    (970, 318, 1050, 396),
-    (970, 404, 1050, 482),
-    (970, 490, 1050, 568),
-    (970, 576, 1050, 654),
+    (18, 646, 80, 698),
+    (18, 714, 80, 766),
+    (18, 782, 80, 834),
+    (18, 850, 80, 902),
+    (18, 918, 80, 970),
 ]
 
 _template_cache: dict = {}
@@ -98,6 +98,14 @@ def extract_heroes(img_path: str) -> dict:
                 scores.append(score)
 
         confidence = sum(scores) / len(scores) if scores else 0.0
+        # Template matching on OW2's in-game portraits is unreliable below ~0.5
+        if confidence < 0.5:
+            return {
+                "my_heroes": [],
+                "enemy_heroes": [],
+                "confidence": round(confidence, 2),
+                "warning": f"Hero detection confidence too low ({confidence:.0%}) — enter heroes manually",
+            }
         return {
             "my_heroes": my_heroes,
             "enemy_heroes": enemy_heroes,
