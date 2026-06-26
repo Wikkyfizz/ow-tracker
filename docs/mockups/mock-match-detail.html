@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OW Tracker — Match detail L2 (mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060a11;--surface:#0b1018;--panel:#0f1923;--panel-hi:#13202f;
+  --border:#1a2740;--border-hi:#283a5c;--faint:#162033;
+  --accent:#e0518a;--accent-dim:#7d3354;
+  --win:#42d392;--loss:#f06a6a;--draw:#9aa7b8;
+  --tank:#41a6f0;--dps:#f5933b;--support:#54d98b;--open:#a78bfa;
+  --text:#e6eef8;--muted:#8398b0;--dim:#46587a;
+  --mono:'IBM Plex Mono',monospace;--sans:'Geist',system-ui,sans-serif;--r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{padding:30px 24px 80px}
+.wrap{max-width:1000px;margin:0 auto}
+.crumb{font-size:13px;color:var(--muted);margin-bottom:14px}
+.crumb b{color:var(--accent);font-weight:500}
+.crumb a{color:var(--muted)}
+
+/* this whole card = the L2 expansion of one match row */
+.match{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.m-hd{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;padding:20px 24px 20px 28px;border-bottom:1px solid var(--border);position:relative}
+.m-edge{position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--win)}
+.m-res{display:flex;flex-direction:column;gap:2px}
+.m-res .o{font-size:13px;font-weight:700;letter-spacing:.05em;color:var(--win)}
+.m-res .sc{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1}
+.m-mapinfo{display:flex;flex-direction:column;gap:2px}
+.m-mapinfo .nm{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.m-mapinfo .md{font-size:13px;color:var(--muted)}
+.m-meta{text-align:right;font-size:12.5px;color:var(--dim);font-family:var(--mono);line-height:1.7}
+.m-meta .hero{font-family:var(--sans);color:var(--text);font-weight:600;font-size:14px;display:flex;gap:7px;align-items:center;justify-content:flex-end}
+.dot{width:9px;height:9px;border-radius:99px}
+.dot.tank{background:var(--tank)}.dot.dps{background:var(--dps)}.dot.support{background:var(--support)}
+
+/* scoreboards */
+.boards{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.board{padding:16px 20px}
+.board:first-child{border-right:1px solid var(--border)}
+.board h2{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;justify-content:space-between}
+.board h2.us{color:var(--win)} .board h2.them{color:var(--loss)}
+.board h2 span{color:var(--dim);font-weight:500;letter-spacing:0;text-transform:none}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;color:var(--dim);font-weight:500;text-align:right;padding:0 0 7px;text-transform:uppercase;letter-spacing:.04em}
+th:first-child{text-align:left}
+td{padding:7px 0;border-top:1px solid var(--faint);font-family:var(--mono);font-size:13px;text-align:right}
+td:first-child{text-align:left;font-family:var(--sans)}
+.pl{display:flex;align-items:center;gap:8px}
+.pl .nm{font-weight:500;font-size:13.5px}
+tr.me td{background:rgba(224,81,138,.06)}
+tr.me .nm{color:var(--accent);font-weight:600}
+tr.you .nm{color:var(--text)}
+.tag-you{font-size:9px;color:var(--accent);border:1px solid var(--accent-dim);border-radius:4px;padding:0 4px;margin-left:4px}
+
+/* lower analysis row */
+.analysis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid var(--border)}
+.abox{padding:16px 20px;border-right:1px solid var(--border)}
+.abox:last-child{border-right:none}
+.abox h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:11px;font-weight:600}
+.comp{display:flex;flex-direction:column;gap:8px}
+.comp .line{display:flex;justify-content:space-between;font-size:13px}
+.comp .line .v{font-family:var(--mono)}
+.arch{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--faint);border:1px solid var(--border);border-radius:6px;padding:3px 9px;margin-top:2px}
+.mu-read{font-size:12.5px;color:var(--muted);margin-top:9px;line-height:1.5}
+.mu-read b{color:var(--text)}
+/* weapon accuracy = the 3rd-screenshot data */
+.acc{display:flex;flex-direction:column;gap:9px}
+.acc .row{display:flex;align-items:center;gap:10px}
+.acc .row .lab{font-size:12px;color:var(--muted);width:78px}
+.acc .row .bar{flex:1;height:8px;background:var(--faint);border-radius:99px;overflow:hidden;position:relative}
+.acc .row .bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--accent-dim),var(--accent))}
+.acc .row .v{font-family:var(--mono);font-size:12.5px;width:42px;text-align:right}
+.src{font-size:10.5px;color:var(--dim);margin-top:10px;font-style:italic}
+.bans{display:flex;gap:7px;flex-wrap:wrap}
+.ban{font-size:12px;background:var(--faint);border:1px solid var(--border);border-radius:6px;padding:4px 9px;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--loss)}
+.ban-src{font-size:10.5px;color:var(--dim);font-style:italic;margin-top:8px}
+.notes{padding:16px 20px;border-top:1px solid var(--border);font-size:13.5px;color:var(--text)}
+.notes h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-weight:600}
+.notes p{color:var(--muted);line-height:1.6}
+.note{max-width:1000px;margin:14px auto 0;padding:14px 0;color:var(--dim);font-size:12.5px;border-top:1px dashed var(--border)}
+.note b{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crumb"><a>Sessions</a> › <a>Jun 25 · 5–3</a> › <b>King's Row · Win</b> &nbsp;<span style="color:var(--dim)">(this is the L2 expansion of a match row)</span></div>
+
+  <div class="match">
+    <!-- header -->
+    <div class="m-hd">
+      <div class="m-edge"></div>
+      <div class="m-res"><div class="o">VICTORY</div><div class="sc">3–2</div></div>
+      <div class="m-mapinfo"><div class="nm">King's Row</div><div class="md">Hybrid · 11m 24s</div></div>
+      <div class="m-meta">
+        <div class="hero"><span class="dot tank"></span>Reinhardt <span style="color:var(--dim);font-weight:400">100%</span></div>
+        Jun 25 · 10:31 PM<br>Diamond 3 · +24 SR
+      </div>
+    </div>
+
+    <!-- scoreboards -->
+    <div class="boards">
+      <div class="board">
+        <h2 class="us">My team <span>Brawl</span></h2>
+        <table>
+          <thead><tr><th>Player</th><th>E</th><th>A</th><th>D</th><th>DMG</th><th>HEAL</th><th>MIT</th></tr></thead>
+          <tbody>
+            <tr class="me"><td><div class="pl"><span class="dot tank"></span><span class="nm">DROWZY<span class="tag-you">YOU</span></span></div></td><td>28</td><td>19</td><td>6</td><td>9.4k</td><td>—</td><td>14.2k</td></tr>
+            <tr><td><div class="pl"><span class="dot dps"></span><span class="nm">Kavu</span></div></td><td>31</td><td>9</td><td>8</td><td>11.8k</td><td>—</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot dps"></span><span class="nm">smolbean</span></div></td><td>24</td><td>11</td><td>10</td><td>10.1k</td><td>—</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot support"></span><span class="nm">Luke <span style="font-size:10px;color:var(--accent)">★</span></span></div></td><td>14</td><td>27</td><td>7</td><td>5.2k</td><td>11.6k</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot support"></span><span class="nm">honeydew</span></div></td><td>9</td><td>22</td><td>9</td><td>4.1k</td><td>13.9k</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="board">
+        <h2 class="them">Enemy team <span>Dive</span></h2>
+        <table>
+          <thead><tr><th>Player</th><th>E</th><th>A</th><th>D</th><th>DMG</th><th>HEAL</th><th>MIT</th></tr></thead>
+          <tbody>
+            <tr><td><div class="pl"><span class="dot tank"></span><span class="nm">qtpie</span></div></td><td>22</td><td>14</td><td>11</td><td>8.1k</td><td>—</td><td>9.8k</td></tr>
+            <tr><td><div class="pl"><span class="dot dps"></span><span class="nm">Faceroll</span></div></td><td>27</td><td>8</td><td>12</td><td>10.9k</td><td>—</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot dps"></span><span class="nm">vexx</span></div></td><td>19</td><td>10</td><td>13</td><td>8.7k</td><td>—</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot support"></span><span class="nm">moontea</span></div></td><td>11</td><td>19</td><td>10</td><td>4.8k</td><td>12.1k</td><td>—</td></tr>
+            <tr><td><div class="pl"><span class="dot support"></span><span class="nm">Briar</span></div></td><td>7</td><td>21</td><td>14</td><td>3.6k</td><td>10.4k</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- analysis -->
+    <div class="analysis">
+      <div class="abox">
+        <h3>Comp matchup</h3>
+        <div class="comp">
+          <div class="line"><span>Mine</span><span class="arch">Brawl</span></div>
+          <div class="line"><span>Enemy</span><span class="arch">Dive</span></div>
+          <div class="line"><span>Tank duel</span><span class="v">Rein vs Winston</span></div>
+        </div>
+        <div class="mu-read">You're <b>71%</b> into Winston (n=14) but only <b>44%</b> Brawl-into-Dive overall. The matchup favored you; the comp didn't.</div>
+      </div>
+      <div class="abox">
+        <h3>Your accuracy <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">· Reinhardt</span></h3>
+        <div class="acc">
+          <div class="row"><span class="lab">Rocket hits</span><span class="bar"><i style="width:48%"></i></span><span class="v">48%</span></div>
+          <div class="row"><span class="lab">Charge pins</span><span class="bar"><i style="width:62%"></i></span><span class="v">5/8</span></div>
+          <div class="row"><span class="lab">Shatter hits</span><span class="bar"><i style="width:75%"></i></span><span class="v">3/4</span></div>
+        </div>
+        <div class="src">From post-game performance screenshot (3rd capture)</div>
+      </div>
+      <div class="abox">
+        <h3>Bans</h3>
+        <div class="bans">
+          <span class="ban">Sombra</span>
+          <span class="ban">Widowmaker</span>
+          <span class="ban">Mauga</span>
+        </div>
+        <div class="ban-src">Manual entry (bans aren't in any screenshot)</div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h3>Notes</h3>
+      <p>Held first point with shatter into their dive when Winston jumped backline. Lost second-point chokehold twice forcing without Luke's nano. Good shatter discipline, the session goal. Tilt-check clean after the two mid-session losses.</p>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Mock — L2 match detail.</b> The deepest expand level: full 10-player scoreboard (E/A/D/DMG/HEAL/MIT from the TEAM-tab OCR, your row + tracked teammate ★ highlighted), comp matchup with the tank-duel read, your weapon accuracy from the <b>3rd screenshot</b>, manual bans, and notes. Same Geist + rose + role-dot system.
+</div>
+</body>
+</html>
