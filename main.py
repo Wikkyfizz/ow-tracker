@@ -72,6 +72,19 @@ def queue_remove(filename: str):
         save_queue(q)
 
 
+def _archive_screenshot(path: str, subfolder: str = "processed"):
+    """Move a screenshot to inbox/processed/ or inbox/discarded/ after handling."""
+    try:
+        src = Path(path)
+        if not src.exists():
+            return
+        dest_dir = src.parent / subfolder
+        dest_dir.mkdir(exist_ok=True)
+        shutil.move(str(src), dest_dir / src.name)
+    except Exception as e:
+        print(f"[archive] could not move {path}: {e}")
+
+
 # ── Folder watcher ────────────────────────────────────────────────────────────
 
 def _start_watcher():
@@ -210,6 +223,9 @@ def create_match(body: MatchCreate):
             ),
         )
         match_id = cur.lastrowid
+        if body.screenshot_path:
+            queue_remove(Path(body.screenshot_path).name)
+            _archive_screenshot(body.screenshot_path, "processed")
         if body.participants:
             conn.executemany(
                 """INSERT INTO match_participants
@@ -285,7 +301,10 @@ def get_queue():
 
 @app.delete("/api/queue/{filename}")
 def discard_queue_item(filename: str):
+    item = next((i for i in load_queue() if i["filename"] == filename), None)
     queue_remove(filename)
+    if item and item.get("path"):
+        _archive_screenshot(item["path"], "discarded")
     return {"ok": True}
 
 
