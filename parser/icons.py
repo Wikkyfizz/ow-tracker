@@ -14,6 +14,57 @@ PORTRAITS_DIR = Path(__file__).parent / "portraits"        # in-game crop templa
 # Based on the 1920×1080 portrait region (70×56 px).
 CANONICAL_W, CANONICAL_H = 70, 56
 
+# Scoreboard slot order is always: tank, dps, dps, support, support
+SLOT_ROLES = ["tank", "dps", "dps", "support", "support"]
+
+# CSV hero names that differ from the code names used as template slugs.
+# Template filenames use code names; CSV uses display names with special chars.
+_CSV_NAME_ALIASES: dict[str, str] = {
+    "Soldier: 76": "Soldier 76",
+    "Torbjörn":    "Torbjorn",
+    "D.Va":        "D Va",
+}
+
+_CSV_ROLE_MAP = {"damage": "dps", "support": "support", "tank": "tank"}
+
+
+def _load_hero_roles_from_csv() -> dict[str, str]:
+    """Build {code_name: role} from data/heroes.csv. Returns empty dict on failure."""
+    import csv as _csv
+    csv_path = Path(__file__).parent.parent / "data" / "heroes.csv"
+    if not csv_path.exists():
+        return {}
+    result = {}
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                name = _CSV_NAME_ALIASES.get(row["name"], row["name"])
+                role = _CSV_ROLE_MAP.get(row["role"].strip().lower())
+                if role:
+                    result[name] = role
+    except Exception:
+        pass
+    return result
+
+
+# Loaded from heroes.csv at import time. Falls back to hardcoded dict if CSV unavailable.
+HERO_ROLES: dict[str, str] = _load_hero_roles_from_csv() or {
+    "D Va": "tank", "Domina": "tank", "Doomfist": "tank", "Hazard": "tank",
+    "Junker Queen": "tank", "Mauga": "tank", "Orisa": "tank",
+    "Ramattra": "tank", "Reinhardt": "tank", "Roadhog": "tank",
+    "Sigma": "tank", "Winston": "tank", "Wrecking Ball": "tank", "Zarya": "tank",
+    "Anran": "dps", "Ashe": "dps", "Bastion": "dps", "Cassidy": "dps", "Echo": "dps",
+    "Emre": "dps", "Freja": "dps", "Genji": "dps", "Hanzo": "dps",
+    "Junkrat": "dps", "Mei": "dps", "Pharah": "dps", "Reaper": "dps",
+    "Sierra": "dps", "Shion": "dps", "Sojourn": "dps", "Soldier 76": "dps",
+    "Sombra": "dps", "Symmetra": "dps", "Torbjorn": "dps", "Tracer": "dps",
+    "Vendetta": "dps", "Venture": "dps", "Widowmaker": "dps",
+    "Ana": "support", "Baptiste": "support", "Brigitte": "support",
+    "Illari": "support", "Jetpack Cat": "support", "Juno": "support", "Kiriko": "support",
+    "Lifeweaver": "support", "Lucio": "support", "Mercy": "support",
+    "Mizuki": "support", "Moira": "support", "Wuyang": "support", "Zenyatta": "support",
+}
+
 # Legacy slot constants kept for any callers that reference them directly.
 # These now match the calibrated face coordinates in ocr.py.
 MY_TEAM_SLOTS = [
@@ -70,8 +121,8 @@ def _ccoeff_normed(crop_bgr, tmpl_f32) -> float:
     return float(num / den) if den > 0 else 0.0
 
 
-def _match_slot(img_bgr, slot: tuple, templates: dict) -> tuple[str, float]:
-    """Extract the portrait crop for a slot and score against all templates."""
+def _match_slot(img_bgr, slot: tuple, templates: dict, role: str | None = None) -> tuple[str, float]:
+    """Extract the portrait crop for a slot and score against role-filtered templates."""
     try:
         import cv2
         l, t, r, b = slot
@@ -79,8 +130,16 @@ def _match_slot(img_bgr, slot: tuple, templates: dict) -> tuple[str, float]:
         if crop.size == 0:
             return "", 0.0
         crop_r = cv2.resize(crop, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA)
+        # Restrict candidates to the correct role; heroes with no role entry are included as fallback
+        if role:
+            candidates = {h: t for h, t in templates.items()
+                          if HERO_ROLES.get(h) == role or h not in HERO_ROLES}
+            if not candidates:
+                candidates = templates
+        else:
+            candidates = templates
         best_hero, best_score = "", -1.0
-        for hero, tmpl in templates.items():
+        for hero, tmpl in candidates.items():
             score = _ccoeff_normed(crop_r, tmpl)
             if score > best_score:
                 best_hero, best_score = hero, score
@@ -115,14 +174,14 @@ def extract_heroes(img_path: str) -> dict:
         my_slots, enemy_slots = row_slots(W, H, img_bgr)
         my_heroes, enemy_heroes, scores = [], [], []
 
-        for slot in my_slots:
-            hero, score = _match_slot(img_bgr, slot, portraits["my"])
+        for i, slot in enumerate(my_slots):
+            hero, score = _match_slot(img_bgr, slot, portraits["my"], SLOT_ROLES[i])
             my_heroes.append(hero)
             if hero:
                 scores.append(score)
 
-        for slot in enemy_slots:
-            hero, score = _match_slot(img_bgr, slot, portraits["enemy"])
+        for i, slot in enumerate(enemy_slots):
+            hero, score = _match_slot(img_bgr, slot, portraits["enemy"], SLOT_ROLES[i])
             enemy_heroes.append(hero)
             if hero:
                 scores.append(score)

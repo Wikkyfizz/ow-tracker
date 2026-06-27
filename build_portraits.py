@@ -27,10 +27,10 @@ ALL_HEROES = [
     "D Va", "Doomfist", "Echo", "Emre", "Freja", "Genji", "Hanzo", "Hazard",
     "Illari", "Junkrat", "Junker Queen", "Jetpack Cat", "Kiriko", "Lifeweaver",
     "Lucio", "Mauga", "Mei", "Mercy", "Mizuki", "Moira", "Orisa", "Pharah",
-    "Ramattra", "Reaper", "Reinhardt", "Roadhog", "Sigma", "Sierra", "Shion",
+    "Juno", "Ramattra", "Reaper", "Reinhardt", "Roadhog", "Sigma", "Sierra", "Shion",
     "Sojourn", "Soldier 76", "Sombra", "Symmetra", "Torbjorn", "Tracer",
-    "Venture", "Widowmaker", "Winston", "Wrecking Ball", "Wuyang", "Zarya",
-    "Zenyatta", "Domina", "Persephone",
+    "Vendetta", "Venture", "Widowmaker", "Winston", "Wrecking Ball", "Wuyang", "Zarya",
+    "Zenyatta", "Domina",
 ]
 
 

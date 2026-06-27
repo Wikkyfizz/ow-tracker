@@ -19,185 +19,187 @@ def _slug(name: str) -> str:
 
 
 # (screenshot_stem, team, row_0based, hero_name)
-# Uncertain identifications are commented out with a note.
+# All entries confirmed by user unless marked [unconfirmed].
+# Entries for heroes whose template already exists are kept for reference but skipped.
 LABELS = [
-    # --- Overwatch_06W2CnsgI0 ---
+    # --- Overwatch_06W2CnsgI0 --- (sheet 1, fully confirmed)
     ("Overwatch_06W2CnsgI0", "my",    0, "Zarya"),
     ("Overwatch_06W2CnsgI0", "my",    1, "Cassidy"),
     ("Overwatch_06W2CnsgI0", "my",    2, "Tracer"),
     ("Overwatch_06W2CnsgI0", "my",    3, "Kiriko"),
-    # MY-5: teal armored helmet — uncertain
-    # EN-1: uncertain
-    # EN-3: Cassidy (covered above)
+    ("Overwatch_06W2CnsgI0", "my",    4, "Mizuki"),
+    ("Overwatch_06W2CnsgI0", "enemy", 0, "Sigma"),
+    ("Overwatch_06W2CnsgI0", "enemy", 1, "Sierra"),
+    ("Overwatch_06W2CnsgI0", "enemy", 2, "Cassidy"),
+    ("Overwatch_06W2CnsgI0", "enemy", 3, "Mizuki"),
     ("Overwatch_06W2CnsgI0", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_1R56cHZndv ---
-    ("Overwatch_1R56cHZndv", "my",    0, "Baptiste"),
-    ("Overwatch_1R56cHZndv", "my",    1, "Mauga"),
+    # --- Overwatch_1R56cHZndv --- (sheet 2, confirmed — bad crops excluded)
+    # MY-1: Sigma — crop cut off at bottom, skip
+    ("Overwatch_1R56cHZndv", "my",    1, "Sojourn"),
     ("Overwatch_1R56cHZndv", "my",    2, "Ashe"),
-    ("Overwatch_1R56cHZndv", "my",    3, "Lucio"),
-    ("Overwatch_1R56cHZndv", "my",    4, "Soldier 76"),
-    ("Overwatch_1R56cHZndv", "enemy", 0, "Baptiste"),
-    ("Overwatch_1R56cHZndv", "enemy", 1, "Ramattra"),
+    ("Overwatch_1R56cHZndv", "my",    3, "Baptiste"),
+    ("Overwatch_1R56cHZndv", "my",    4, "Zenyatta"),
+    # EN-1: Sigma — crop cut off at bottom, skip
+    # EN-2: Widowmaker — row displaced by Sigma bleed, skip
     ("Overwatch_1R56cHZndv", "enemy", 2, "Genji"),
     ("Overwatch_1R56cHZndv", "enemy", 3, "Kiriko"),
-    ("Overwatch_1R56cHZndv", "enemy", 4, "Soldier 76"),
+    ("Overwatch_1R56cHZndv", "enemy", 4, "Zenyatta"),
 
-    # --- Overwatch_1R6DGlPdQ2 ---
+    # --- Overwatch_1R6DGlPdQ2 --- (sheet 3, partially confirmed)
     ("Overwatch_1R6DGlPdQ2", "my",    0, "Zarya"),
     ("Overwatch_1R6DGlPdQ2", "my",    1, "Shion"),
     ("Overwatch_1R6DGlPdQ2", "my",    2, "Cassidy"),
     ("Overwatch_1R6DGlPdQ2", "my",    3, "Kiriko"),
-    # MY-5: partially clipped — uncertain (Sojourn?)
+    ("Overwatch_1R6DGlPdQ2", "my",    4, "Illari"),
     ("Overwatch_1R6DGlPdQ2", "enemy", 0, "Zarya"),
     ("Overwatch_1R6DGlPdQ2", "enemy", 1, "Cassidy"),
     ("Overwatch_1R6DGlPdQ2", "enemy", 2, "Shion"),
-    # EN-4: purple-blue hair, crescent marking — uncertain (D.Va? Ana?)
+    ("Overwatch_1R6DGlPdQ2", "enemy", 3, "Juno"),
     ("Overwatch_1R6DGlPdQ2", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_4Zaakta4kE ---
+    # --- Overwatch_4Zaakta4kE --- (sheet 4, fully confirmed)
     ("Overwatch_4Zaakta4kE", "my",    0, "Zarya"),
     ("Overwatch_4Zaakta4kE", "my",    1, "Mei"),
     ("Overwatch_4Zaakta4kE", "my",    2, "Genji"),
-    ("Overwatch_4Zaakta4kE", "my",    3, "Junker Queen"),
+    ("Overwatch_4Zaakta4kE", "my",    3, "Moira"),
     ("Overwatch_4Zaakta4kE", "my",    4, "Kiriko"),
     ("Overwatch_4Zaakta4kE", "enemy", 0, "Wrecking Ball"),
     ("Overwatch_4Zaakta4kE", "enemy", 1, "Tracer"),
-    ("Overwatch_4Zaakta4kE", "enemy", 2, "Mauga"),
+    ("Overwatch_4Zaakta4kE", "enemy", 2, "Sojourn"),
     ("Overwatch_4Zaakta4kE", "enemy", 3, "Kiriko"),
-    # EN-5: young dark-haired man — uncertain
+    ("Overwatch_4Zaakta4kE", "enemy", 4, "Wuyang"),
 
-    # --- Overwatch_7www0b0WoJ ---
-    ("Overwatch_7www0b0WoJ", "my",    0, "Venture"),
+    # --- Overwatch_7www0b0WoJ --- (sheet 5, confirmed except MY-3)
+    # MY-1: Junker Queen — crop cut off at bottom, skip
     ("Overwatch_7www0b0WoJ", "my",    1, "Torbjorn"),
-    # MY-3: dark-skinned woman, gold accent — uncertain (Sojourn?)
-    # MY-4: dark skin, wide toothy grin — uncertain
+    ("Overwatch_7www0b0WoJ", "my",    2, "Vendetta"),
+    ("Overwatch_7www0b0WoJ", "my",    3, "Wuyang"),
     ("Overwatch_7www0b0WoJ", "my",    4, "Kiriko"),
-    # EN-1: yellow round mask, orange eye — uncertain
+    ("Overwatch_7www0b0WoJ", "enemy", 0, "Orisa"),
     ("Overwatch_7www0b0WoJ", "enemy", 1, "Shion"),
     ("Overwatch_7www0b0WoJ", "enemy", 2, "Reaper"),
     ("Overwatch_7www0b0WoJ", "enemy", 3, "Kiriko"),
-    ("Overwatch_7www0b0WoJ", "enemy", 4, "Soldier 76"),
+    ("Overwatch_7www0b0WoJ", "enemy", 4, "Zenyatta"),
 
-    # --- Overwatch_a3ozeQBJlu ---
+    # --- Overwatch_a3ozeQBJlu --- (sheet 6, MY only — enemy rows misplaced)
     ("Overwatch_a3ozeQBJlu", "my",    0, "Zarya"),
     ("Overwatch_a3ozeQBJlu", "my",    1, "Cassidy"),
     ("Overwatch_a3ozeQBJlu", "my",    2, "Junkrat"),
     ("Overwatch_a3ozeQBJlu", "my",    3, "Kiriko"),
     ("Overwatch_a3ozeQBJlu", "my",    4, "Ana"),
-    # EN-*: rows still split/misaligned in this screenshot — skip all enemy
 
-    # --- Overwatch_bMzBrYEn8M ---
+    # --- Overwatch_bMzBrYEn8M --- (sheet 7, confirmed)
     ("Overwatch_bMzBrYEn8M", "my",    0, "Zarya"),
-    ("Overwatch_bMzBrYEn8M", "my",    1, "Mauga"),
+    ("Overwatch_bMzBrYEn8M", "my",    1, "Sojourn"),
     ("Overwatch_bMzBrYEn8M", "my",    2, "Shion"),
     ("Overwatch_bMzBrYEn8M", "my",    3, "Kiriko"),
-    ("Overwatch_bMzBrYEn8M", "my",    4, "Sojourn"),
+    ("Overwatch_bMzBrYEn8M", "my",    4, "Wuyang"),
     ("Overwatch_bMzBrYEn8M", "enemy", 0, "Zarya"),
     ("Overwatch_bMzBrYEn8M", "enemy", 1, "Tracer"),
     ("Overwatch_bMzBrYEn8M", "enemy", 2, "Cassidy"),
-    # EN-4: dark skin, wide grin, short hair — uncertain
+    ("Overwatch_bMzBrYEn8M", "enemy", 3, "Wuyang"),
     ("Overwatch_bMzBrYEn8M", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_glEGeuSkaU ---
-    ("Overwatch_glEGeuSkaU", "my",    0, "Baptiste"),
+    # --- Overwatch_glEGeuSkaU --- (sheet 8, confirmed)
+    ("Overwatch_glEGeuSkaU", "my",    0, "Sigma"),
     ("Overwatch_glEGeuSkaU", "my",    1, "Ashe"),
     ("Overwatch_glEGeuSkaU", "my",    2, "Widowmaker"),
     ("Overwatch_glEGeuSkaU", "my",    3, "Kiriko"),
-    # MY-5: dark-skinned, white outfit — uncertain
-    ("Overwatch_glEGeuSkaU", "enemy", 0, "Baptiste"),
+    ("Overwatch_glEGeuSkaU", "my",    4, "Ana"),
+    ("Overwatch_glEGeuSkaU", "enemy", 0, "Sigma"),
     ("Overwatch_glEGeuSkaU", "enemy", 1, "Shion"),
     ("Overwatch_glEGeuSkaU", "enemy", 2, "Mei"),
     ("Overwatch_glEGeuSkaU", "enemy", 3, "Kiriko"),
-    # EN-5: young dark-haired man — uncertain
+    ("Overwatch_glEGeuSkaU", "enemy", 4, "Wuyang"),
 
-    # --- Overwatch_Q6vAdOYyVP ---
-    ("Overwatch_Q6vAdOYyVP", "my",    0, "Venture"),
+    # --- Overwatch_Q6vAdOYyVP --- (sheet 9)
+    # MY-1: bad crop (tank portrait cut off at bottom) — skip
     ("Overwatch_Q6vAdOYyVP", "my",    1, "Shion"),
     ("Overwatch_Q6vAdOYyVP", "my",    2, "Mei"),
     ("Overwatch_Q6vAdOYyVP", "my",    3, "Mizuki"),
-    ("Overwatch_Q6vAdOYyVP", "my",    4, "Junker Queen"),
-    ("Overwatch_Q6vAdOYyVP", "enemy", 0, "Reaper"),   # skull/bone skin, dark cloak with skull motif
+    ("Overwatch_Q6vAdOYyVP", "my",    4, "Moira"),
+    ("Overwatch_Q6vAdOYyVP", "enemy", 0, "Reaper"),
     ("Overwatch_Q6vAdOYyVP", "enemy", 1, "Cassidy"),
-    # EN-3: Moira (already covered)
-    # EN-4: uncertain
+    # EN-3: bad crop
+    # EN-4: bad crop
     ("Overwatch_Q6vAdOYyVP", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_RsmH1RshlB ---
+    # --- Overwatch_RsmH1RshlB --- (sheet 10)
     ("Overwatch_RsmH1RshlB", "my",    0, "Zarya"),
     ("Overwatch_RsmH1RshlB", "my",    1, "Cassidy"),
     ("Overwatch_RsmH1RshlB", "my",    2, "Reaper"),
     ("Overwatch_RsmH1RshlB", "my",    3, "Kiriko"),
-    ("Overwatch_RsmH1RshlB", "my",    4, "Junker Queen"),
-    # EN-1: gray armored figure — uncertain (Bastion? Roadhog?)
+    ("Overwatch_RsmH1RshlB", "my",    4, "Moira"),
+    # EN-1: bad crop
     ("Overwatch_RsmH1RshlB", "enemy", 1, "Shion"),
     ("Overwatch_RsmH1RshlB", "enemy", 2, "Hanzo"),
     ("Overwatch_RsmH1RshlB", "enemy", 3, "Kiriko"),
-    # EN-5: partially visible — uncertain
+    ("Overwatch_RsmH1RshlB", "enemy", 4, "Ana"),
 
-    # --- Overwatch_SlCTA43i5k ---
+    # --- Overwatch_SlCTA43i5k --- (sheet 11)
     ("Overwatch_SlCTA43i5k", "my",    0, "Zarya"),
     ("Overwatch_SlCTA43i5k", "my",    1, "Ashe"),
     ("Overwatch_SlCTA43i5k", "my",    2, "Mei"),
-    # MY-4: uncertain
+    ("Overwatch_SlCTA43i5k", "my",    3, "Wuyang"),
     ("Overwatch_SlCTA43i5k", "my",    4, "Kiriko"),
-    # EN-*: mostly partially visible
+    # EN-1 through EN-5: all bad crops (rows misaligned in this screenshot)
 
-    # --- Overwatch_sM0bnxZLVF ---
+    # --- Overwatch_sM0bnxZLVF --- (sheet 12)
     ("Overwatch_sM0bnxZLVF", "my",    0, "Zarya"),
-    ("Overwatch_sM0bnxZLVF", "my",    1, "Mauga"),
+    ("Overwatch_sM0bnxZLVF", "my",    1, "Sojourn"),
     ("Overwatch_sM0bnxZLVF", "my",    2, "Cassidy"),
-    # MY-4: teal diagonal visor — uncertain
+    ("Overwatch_sM0bnxZLVF", "my",    3, "Mizuki"),
     ("Overwatch_sM0bnxZLVF", "my",    4, "Kiriko"),
     ("Overwatch_sM0bnxZLVF", "enemy", 0, "Zarya"),
-    ("Overwatch_sM0bnxZLVF", "enemy", 1, "Mauga"),
+    ("Overwatch_sM0bnxZLVF", "enemy", 1, "Sojourn"),
     ("Overwatch_sM0bnxZLVF", "enemy", 2, "Lucio"),
     ("Overwatch_sM0bnxZLVF", "enemy", 3, "Kiriko"),
-    # EN-5: uncertain
+    ("Overwatch_sM0bnxZLVF", "enemy", 4, "Wuyang"),
 
-    # --- Overwatch_TUCPtQoIBG ---
+    # --- Overwatch_TUCPtQoIBG --- (sheet 13)
     ("Overwatch_TUCPtQoIBG", "my",    0, "Zarya"),
     ("Overwatch_TUCPtQoIBG", "my",    1, "Soldier 76"),
     ("Overwatch_TUCPtQoIBG", "my",    2, "Shion"),
     ("Overwatch_TUCPtQoIBG", "my",    3, "Baptiste"),
-    # MY-5: teal diagonal visor — uncertain
+    ("Overwatch_TUCPtQoIBG", "my",    4, "Mizuki"),
     ("Overwatch_TUCPtQoIBG", "enemy", 0, "Wrecking Ball"),
     ("Overwatch_TUCPtQoIBG", "enemy", 1, "Shion"),
     ("Overwatch_TUCPtQoIBG", "enemy", 2, "Widowmaker"),
     ("Overwatch_TUCPtQoIBG", "enemy", 3, "Brigitte"),
     ("Overwatch_TUCPtQoIBG", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_xXm7xbfyho ---
-    ("Overwatch_xXm7xbfyho", "my",    0, "Venture"),
+    # --- Overwatch_xXm7xbfyho --- (sheet 14)
+    # MY-1: bad crop (tank portrait cut off at bottom) — skip
     ("Overwatch_xXm7xbfyho", "my",    1, "Shion"),
     ("Overwatch_xXm7xbfyho", "my",    2, "Mei"),
-    # MY-4: teal diagonal visor — uncertain
-    ("Overwatch_xXm7xbfyho", "my",    4, "Junker Queen"),
-    ("Overwatch_xXm7xbfyho", "enemy", 0, "Roadhog"),  # yellow/green round gas mask, orange lens
+    ("Overwatch_xXm7xbfyho", "my",    3, "Mizuki"),
+    ("Overwatch_xXm7xbfyho", "my",    4, "Moira"),
+    ("Overwatch_xXm7xbfyho", "enemy", 0, "Roadhog"),
     ("Overwatch_xXm7xbfyho", "enemy", 1, "Shion"),
     ("Overwatch_xXm7xbfyho", "enemy", 2, "Cassidy"),
     ("Overwatch_xXm7xbfyho", "enemy", 3, "Mizuki"),
     ("Overwatch_xXm7xbfyho", "enemy", 4, "Kiriko"),
 
-    # --- Overwatch_ZGLCFsiOih ---
+    # --- Overwatch_ZGLCFsiOih --- (sheet 15)
     ("Overwatch_ZGLCFsiOih", "my",    0, "Baptiste"),
     ("Overwatch_ZGLCFsiOih", "my",    1, "Shion"),
     ("Overwatch_ZGLCFsiOih", "my",    2, "Junkrat"),
-    # MY-4: uncertain
+    ("Overwatch_ZGLCFsiOih", "my",    3, "Wuyang"),
     ("Overwatch_ZGLCFsiOih", "my",    4, "Kiriko"),
-    # EN-1, EN-2: uncertain
-    # EN-3: uncertain
+    ("Overwatch_ZGLCFsiOih", "enemy", 0, "Sigma"),
+    ("Overwatch_ZGLCFsiOih", "enemy", 1, "Shion"),
+    ("Overwatch_ZGLCFsiOih", "enemy", 2, "Mei"),
     ("Overwatch_ZGLCFsiOih", "enemy", 3, "Kiriko"),
     ("Overwatch_ZGLCFsiOih", "enemy", 4, "Junker Queen"),
 
-    # --- Overwatch_zRPTVNorq2 ---
+    # --- Overwatch_zRPTVNorq2 --- (sheet 16)
     ("Overwatch_zRPTVNorq2", "my",    0, "Zarya"),
     ("Overwatch_zRPTVNorq2", "my",    1, "Emre"),
     ("Overwatch_zRPTVNorq2", "my",    2, "Shion"),
     ("Overwatch_zRPTVNorq2", "my",    3, "Kiriko"),
-    ("Overwatch_zRPTVNorq2", "my",    4, "Soldier 76"),
-    # EN-1, EN-2: uncertain
-    # EN-3: Moira (already covered)
+    ("Overwatch_zRPTVNorq2", "my",    4, "Zenyatta"),
+    # EN-1 through EN-5: bad crops (rows misaligned in this screenshot)
     ("Overwatch_zRPTVNorq2", "enemy", 3, "Kiriko"),
 ]
 
