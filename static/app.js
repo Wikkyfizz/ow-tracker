@@ -655,8 +655,8 @@ function renderSrChart(data) {
     type: 'line',
     data: {
       labels: data.map((_, i) => i + 1),
-      datasets: [{ data: data.map(d => d.rank_score), borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,.1)', pointRadius: 2, tension: 0.3, fill: true }]
+      datasets: [{ data: data.map(d => d.rank_score), borderColor: '#e0518a',
+        backgroundColor: 'rgba(224,81,138,.1)', pointRadius: 2, tension: 0.3, fill: true }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -797,32 +797,100 @@ async function loadHistory() {
   if (map)     params.set('map', map);
   if (outcome) params.set('outcome', outcome);
   if (hero)    params.set('hero', hero);
-  const data = await api.get('/api/matches?' + params);
-  const tbody = document.getElementById('history-body');
+  const data  = await api.get('/api/matches?' + params);
+  const listEl = document.getElementById('history-list');
+
   if (!data.matches.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="empty"><p>No matches yet.</p></td></tr>';
+    listEl.innerHTML = '<div class="empty"><h3>No matches yet</h3><p>Log a game or drop a screenshot into your inbox folder to get started.</p></div>';
     return;
   }
-  tbody.innerHTML = data.matches.map(m => {
-    const myH     = JSON.parse(m.my_heroes || '[]');
-    const heroStr = myH.map(h => `${h.hero}${myH.length > 1 ? ' '+h.pct+'%' : ''}`).join(', ');
-    const date    = new Date(m.played_at).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-    const rankStr = m.rank_tier ? `${m.rank_tier} ${m.rank_division} ${m.rank_pct ? m.rank_pct+'%' : ''}` : '—';
-    return `<tr>
-      <td>${m.id}</td>
-      <td style="white-space:nowrap">${date}</td>
-      <td>${m.map}</td>
-      <td class="outcome-${m.outcome}">${m.outcome}</td>
-      <td style="max-width:180px">${heroStr || '—'}</td>
-      <td>${m.enemy_comp || '—'}</td>
-      <td class="num">${numFmt(m.elims)}</td>
-      <td class="num">${numFmt(m.deaths)}</td>
-      <td class="num">${numFmt(m.damage)}</td>
-      <td style="font-size:12px">${rankStr}</td>
-      <td>${m.stack_size > 1 ? '×'+m.stack_size : '—'}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="deleteMatch(${m.id})">✕</button></td>
-    </tr>`;
-  }).join('');
+
+  listEl.innerHTML = data.matches.map(m => renderMatchCard(m)).join('');
+
+  listEl.querySelectorAll('.match-card-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.match-card').classList.toggle('expanded');
+    });
+  });
+}
+
+function renderMatchCard(m) {
+  const myH    = JSON.parse(m.my_heroes    || '[]');
+  const enemyH = JSON.parse(m.enemy_heroes || '[]');
+  const bans   = JSON.parse(m.bans         || '[]');
+  const date   = new Date(m.played_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const oc     = m.outcome === 'Win' ? 'win' : m.outcome === 'Loss' ? 'loss' : 'draw';
+
+  // Heroes — role-colored names
+  const heroStr = myH.map(h => {
+    const rc     = roleClass(getHeroRole(h.hero));
+    const pctStr = myH.length > 1 ? ` <span style="color:var(--dim);font-size:11px">${h.pct}%</span>` : '';
+    return `<span style="color:var(--${rc === 'unknown' ? 'muted' : rc})">${h.hero}${pctStr}</span>`;
+  }).join('<span style="color:var(--dim)"> · </span>') || '—';
+
+  // KDA compact
+  const kda = [m.elims != null ? `${m.elims}E` : null, m.deaths != null ? `${m.deaths}D` : null, m.assists != null ? `${m.assists}A` : null].filter(Boolean).join('/');
+
+  // Rank chip
+  const rankHtml = m.rank_tier
+    ? `<span class="match-card-sr">${m.rank_tier} ${m.rank_division}${m.rank_pct != null ? ' · ' + m.rank_pct + '%' : ''}</span>`
+    : '';
+
+  // Expanded body
+  const statsHtml   = buildStatsRow(m);
+  const enemyStr    = enemyH.map(h => h.hero).join(', ') || '—';
+  const bansHtml    = bans.length ? `<div><div class="section-label">Bans</div><div style="font-size:13px">${bans.join(', ')}</div></div>` : '';
+  const stackHtml   = m.stack_size > 1 ? `<div><div class="section-label">Stack</div><div style="font-size:13px">×${m.stack_size}</div></div>` : '';
+  const notesHtml   = m.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--muted);border-left:2px solid var(--border);padding-left:10px">${m.notes}</div>` : '';
+  const pracDot     = m.practiced ? { Y: 'practiced-y', 'Sort of': 'practiced-so', N: 'practiced-n' }[m.practiced] || '' : '';
+  const pracHtml    = m.practiced
+    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:10px"><span class="practiced-dot ${pracDot}"></span><span style="font-size:12px;color:var(--muted)">Goal focus: ${m.practiced}${m.practice_notes ? ' — ' + m.practice_notes : ''}</span></div>`
+    : '';
+
+  return `<div class="match-card ${oc}" id="mc-${m.id}">
+    <div class="match-card-header">
+      <span class="match-card-outcome outcome-${m.outcome}">${m.outcome}</span>
+      <span class="match-card-map">${m.map}</span>
+      <span class="match-card-heroes">${heroStr}</span>
+      ${kda ? `<span class="match-card-kda">${kda}</span>` : ''}
+      <span style="font-size:12px;color:var(--dim);flex-shrink:0;white-space:nowrap">${date}</span>
+      ${rankHtml}
+      <span class="match-card-chevron">▼</span>
+    </div>
+    <div class="match-card-body">
+      ${statsHtml}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:14px">
+        <div>
+          <div class="section-label">Enemy Comp</div>
+          <div style="font-size:13px">${m.enemy_comp || '—'}</div>
+          <div style="font-size:12px;color:var(--dim);margin-top:2px">${enemyStr}</div>
+        </div>
+        ${bansHtml}
+        ${stackHtml}
+      </div>
+      ${notesHtml}
+      ${pracHtml}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditMatch(${m.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMatch(${m.id})">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildStatsRow(m) {
+  const stats = [
+    { label: 'Elims',      value: m.elims      != null ? m.elims                : null },
+    { label: 'Deaths',     value: m.deaths     != null ? m.deaths               : null },
+    { label: 'Assists',    value: m.assists    != null ? m.assists               : null },
+    { label: 'Damage',     value: m.damage     != null ? numFmt(m.damage)        : null },
+    { label: 'Healing',    value: m.healing    != null ? numFmt(m.healing)       : null },
+    { label: 'Mitigation', value: m.mitigation != null ? numFmt(m.mitigation)    : null },
+  ].filter(s => s.value != null);
+  if (!stats.length) return '';
+  return `<div class="stat-strip">${stats.map(s =>
+    `<div class="stat-strip-item"><div class="stat-strip-label">${s.label}</div><div class="stat-strip-value">${s.value}</div></div>`
+  ).join('')}</div>`;
 }
 
 document.getElementById('h-filter-btn').addEventListener('click', loadHistory);
