@@ -99,8 +99,9 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     from parser.ocr import extract_all_rows, find_my_row, extract_tracked_players
     from parser.icons import extract_heroes
 
-    all_rows = extract_all_rows(img)
+    all_rows   = extract_all_rows(img)
     my_rows    = all_rows["my_team"]
+    enemy_rows = all_rows["enemy_team"]
 
     my_row = find_my_row(my_rows, username)
     if not my_row:
@@ -109,20 +110,14 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     found_teammates = extract_tracked_players(my_rows, tracked_players)
     stack_size = 1 + len(found_teammates)
 
-    icon_result = extract_heroes(path)
+    icon_result  = extract_heroes(path)
     hero_warning = icon_result.get("warning", "")
-    no_icons = not icon_result.get("my_heroes") and not icon_result.get("enemy_heroes")
+    if hero_warning:
+        warnings.append(hero_warning)
 
-    if no_icons or hero_warning:
-        if hero_warning:
-            warnings.append(hero_warning)
-        my_heroes    = []
-        enemy_heroes = []
-        confidence   = 0.0
-    else:
-        my_heroes    = [{"hero": h, "pct": 100} for h in icon_result.get("my_heroes", [])[:1]]
-        enemy_heroes = [{"hero": h, "pct": 100} for h in icon_result.get("enemy_heroes", [])]
-        confidence   = icon_result.get("confidence", 0.0)
+    my_heroes    = [{"hero": h, "row": i} for i, h in enumerate(icon_result.get("my_heroes",    []))]
+    enemy_heroes = [{"hero": h, "row": i} for i, h in enumerate(icon_result.get("enemy_heroes", []))]
+    confidence   = icon_result.get("confidence", 0.0)
 
     warnings.append("Map and outcome not on TEAM tab — confirm after parsing SUMMARY tab screenshot")
 
@@ -141,6 +136,7 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
         "damage":        my_row.get("damage")     if my_row else None,
         "healing":       my_row.get("healing")    if my_row else None,
         "mitigation":    my_row.get("mitigation") if my_row else None,
+        "team_rows":     {"my_team": my_rows, "enemy_team": enemy_rows},
         "teammates":     found_teammates,
         "stack_size":    stack_size,
         "confidence":    round(confidence, 2),

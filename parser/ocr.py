@@ -14,7 +14,8 @@ import numpy as np
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-RANK_TIERS = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion"]
+RANK_TIERS      = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion"]
+KNOWN_GAME_MODES = ["Control", "Escort", "Hybrid", "Push", "Flashpoint", "Clash"]
 
 # ── TEAM tab layout ───────────────────────────────────────────────────────────
 
@@ -47,12 +48,13 @@ NAME_X_END   = 900
 #
 # Calibrated from 1920×1080 screenshots.
 SUMMARY_REGIONS = {
-    "map_name":    (985, 143, 1390, 175),   # Right-panel header: "NEON JUNCTION"
-    "outcome":     (985, 453, 1390, 515),   # Large italic text: "DEFEAT" / "VICTORY" / "DRAW"
-    "date_time":   (985, 528, 1390, 558),   # "· DATE: 06/24/26 - 17:21"
-    "game_mode":   (985, 552, 1390, 582),   # "· GAME MODE: HYBRID"
-    "game_length": (985, 576, 1390, 606),   # "· GAME LENGTH: 16:03"
+    "map_name":    (986, 185, 1500, 215),   # right-panel header text
+    "final_score": (1200, 660, 1505, 692),  # "· FINAL SCORE: X VS Y" — derive outcome from scores
+    "date_time":   (1200, 685, 1525, 722),  # "· DATE: 06/24/26 - 17:21" (1525 to capture full time)
 }
+# GAME MODE and GAME LENGTH bullet positions vary by game mode (Push skips GAME MODE).
+# _scan_summary_bullets() scans this y range dynamically.
+SUMMARY_BULLET_SCAN_Y = (712, 790)  # y range to scan for GAME MODE / GAME LENGTH
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
@@ -89,6 +91,8 @@ def _ocr_number(img: Image.Image, region: tuple) -> int | None:
         lambda c: c.split()[1],                                        # green channel (gold row)
         lambda c: Image.fromarray(np.where(np.array(c.split()[0]) > 150, 255, 0).astype(np.uint8)),  # red threshold
         lambda c: Image.fromarray(np.where(np.array(c.convert("L")) > 200, 255, 0).astype(np.uint8)),
+        lambda c: c.convert("L"),                                      # raw grayscale (catches dim "0")
+        lambda c: Image.fromarray(np.where(np.array(c.convert("L")) > 20, 255, 0).astype(np.uint8)),  # very low threshold
     ):
         result = _try(proc(crop))
         if result is not None:
@@ -108,17 +112,17 @@ def _ocr_line(img: Image.Image, region: tuple, config: str = "--psm 7 -l eng") -
 
 def detect_tab(img: Image.Image) -> str:
     """Return 'SUMMARY', 'TEAM', 'PERSONAL', or 'UNKNOWN'."""
-    # PERSONAL tab: left sidebar shows "XX% / PERCENT PLAYED" in the first hero card
-    raw_personal = _ocr_line(img, (305, 255, 520, 295)).upper()
-    if "PERCENT" in raw_personal or "PLAYED" in raw_personal:
+    # PERSONAL first — hero card overlaps with SUMMARY left panel region
+    raw_personal = _ocr_line(img, (305, 315, 680, 345)).upper()
+    if "PERCENT" in raw_personal:
         return "PERSONAL"
 
-    # SUMMARY tab: DEFEAT/VICTORY/DRAW in the right-panel outcome region
-    raw = _ocr_line(img, SUMMARY_REGIONS["outcome"]).upper()
-    if any(w in raw for w in ("VICTORY", "DEFEAT", "DRAW")):
+    # SUMMARY: "· FINAL SCORE: X VS Y" in right panel — present on all game modes
+    raw = _ocr_line(img, SUMMARY_REGIONS["final_score"]).upper()
+    if "FINAL" in raw and "SCORE" in raw:
         return "SUMMARY"
 
-    # TEAM tab: E/A/D column headers appear at y≈216
+    # TEAM: E/A/D column headers at y≈216
     raw_header = _ocr_line(img, (900, 208, 1080, 232)).upper()
     if "E" in raw_header and "A" in raw_header:
         return "TEAM"
@@ -127,6 +131,24 @@ def detect_tab(img: Image.Image) -> str:
 
 
 # ── SUMMARY tab extraction ────────────────────────────────────────────────────
+
+def _scan_summary_bullets(img: Image.Image) -> dict:
+    """
+    Scan for GAME MODE and GAME LENGTH bullets in the right panel.
+    GAME MODE is absent on some game types (Push); callers must handle missing keys.
+    FINAL SCORE and DATE are at fixed positions and read separately in extract_summary().
+    """
+    y_start, y_end = SUMMARY_BULLET_SCAN_Y
+    window, step, x1, x2 = 34, 17, 1200, 1510
+    found = {}
+    for y in range(y_start, y_end - window, step):
+        line = _ocr_line(img, (x1, y, x2, y + window))
+        u = line.upper()
+        for label, key in [("GAME MODE", "game_mode"), ("GAME LENGTH", "game_length")]:
+            if label in u and key not in found:
+                found[key] = line.split(':', 1)[1].strip() if ':' in line else line
+    return found
+
 
 def extract_summary(img: Image.Image, known_maps: list[str]) -> dict:
     """
@@ -141,46 +163,64 @@ def extract_summary(img: Image.Image, known_maps: list[str]) -> dict:
     if map_conf < 0.5:
         warnings.append(f"Low map confidence ({map_conf:.0%}): '{raw_map}'")
 
-    # Outcome
-    raw_outcome = _ocr_line(img, SUMMARY_REGIONS["outcome"]).upper()
-    if "VICTORY" in raw_outcome:
-        outcome, outcome_conf = "Win", 0.95
-    elif "DEFEAT" in raw_outcome:
-        outcome, outcome_conf = "Loss", 0.95
-    elif "DRAW" in raw_outcome:
-        outcome, outcome_conf = "Draw", 0.90
+    bullets = _scan_summary_bullets(img)
+
+    # Outcome — "· FINAL SCORE: X VS Y"; player score is always the LEFT number
+    raw_score = _ocr_line(img, SUMMARY_REGIONS["final_score"])
+    score_m = re.search(r'([O\d]+)\W{0,3}vs\W{0,3}([O\d]+)', raw_score, re.IGNORECASE)
+    if score_m:
+        left  = int(score_m.group(1).upper().replace('O', '0'))
+        right = int(score_m.group(2).upper().replace('O', '0'))
+        outcome = "Win" if left > right else ("Loss" if left < right else "Draw")
     else:
-        outcome, outcome_conf = "", 0.0
-        warnings.append(f"Could not detect outcome (got: '{raw_outcome[:40]}')")
+        outcome = ""
+        warnings.append(f"Could not parse FINAL SCORE: '{raw_score}'")
 
     # Game length
-    raw_len = _ocr_line(img, SUMMARY_REGIONS["game_length"]).strip()
+    raw_len = bullets.get("game_length", "")
     game_length_s = _parse_mmss(raw_len)
     if game_length_s is None:
         warnings.append(f"Could not parse game length: '{raw_len}'")
 
-    # Date/time → played_at ISO string
-    raw_dt = _ocr_line(img, SUMMARY_REGIONS["date_time"]).strip()
+    # Date/time — fixed position
+    raw_dt = _ocr_line(img, SUMMARY_REGIONS["date_time"])
     played_at = _parse_datetime(raw_dt)
     if played_at is None:
         warnings.append(f"Could not parse date: '{raw_dt}'")
 
-    # Game mode — bullet format "· GAME MODE: HYBRID"; extract value after last colon
-    raw_mode_line = _ocr_line(img, SUMMARY_REGIONS["game_mode"])
-    if ':' in raw_mode_line:
-        raw_mode = raw_mode_line.split(':')[-1]
-    else:
-        raw_mode = raw_mode_line
-    raw_mode = re.sub(r'^[^A-Za-z]+', '', raw_mode).strip().title()
+    # Game mode (absent on some game types — e.g. Push); fuzzy-match to known values
+    raw_mode = re.sub(r'^[^A-Za-z]+', '', bullets.get("game_mode", ""))
+    raw_mode = re.sub(r'[^A-Za-z]+$', '', raw_mode).strip()
+    if raw_mode:
+        mode_match, mode_conf = _best_mode_match(raw_mode, KNOWN_GAME_MODES)
+        raw_mode = mode_match if mode_conf >= 0.5 else raw_mode.title()
 
     return {
-        "map":          map_name,
-        "outcome":      outcome,
+        "map":           map_name,
+        "outcome":       outcome,
         "game_length_s": game_length_s,
-        "played_at":    played_at,
-        "game_mode":    raw_mode,
-        "warnings":     warnings,
+        "played_at":     played_at,
+        "game_mode":     raw_mode,
+        "warnings":      warnings,
     }
+
+
+def _best_mode_match(raw: str, known_modes: list[str]) -> tuple[str, float]:
+    """Match a possibly-truncated game mode string using positional prefix similarity."""
+    raw_u = raw.upper()
+    best, best_score = "", 0.0
+    for m in known_modes:
+        m_u = m.upper()
+        n = min(len(raw_u), len(m_u))
+        if n == 0:
+            continue
+        matches = sum(1 for i in range(n) if raw_u[i] == m_u[i])
+        score = matches / n
+        if score > best_score:
+            best, best_score = m, score
+    if best_score >= 0.6:
+        return best, best_score
+    return _best_map_match(raw, known_modes)
 
 
 def _best_map_match(raw: str, known_maps: list[str]) -> tuple[str, float]:

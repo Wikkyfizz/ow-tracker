@@ -10,7 +10,7 @@ from PIL import Image
 
 from parser.ocr import (
     detect_tab, extract_summary, extract_all_rows, extract_personal,
-    SUMMARY_REGIONS, _ocr_line, _preprocess,
+    SUMMARY_REGIONS, SUMMARY_BULLET_SCAN_Y, _scan_summary_bullets, _ocr_line, _preprocess,
 )
 
 
@@ -36,10 +36,10 @@ def calibrate_summary(img: Image.Image, name: str):
     print(f"\n[SUMMARY] {name}")
     _divider()
 
-    # Show raw OCR for each region
-    for field, region in SUMMARY_REGIONS.items():
-        raw = _ocr_line(img, region)
-        print(f"  {field:12s} region {region}  →  '{raw}'")
+    print("  Raw bullets found:")
+    bullets = _scan_summary_bullets(img)
+    for k, v in bullets.items():
+        print(f"    {k:12s} -> '{v}'")
 
     print()
     data = extract_summary(img, KNOWN_MAPS)
@@ -96,9 +96,9 @@ def run(paths):
             print(f"\n[UNKNOWN] {name}")
             # Dump raw OCR from key regions to help diagnose
             for label, region in [
-                ("outcome_new", SUMMARY_REGIONS["outcome"]),
-                ("team_header", (900, 208, 1080, 232)),
-                ("personal_pct", (305, 255, 520, 295)),
+                ("final_score",  SUMMARY_REGIONS["final_score"]),
+                ("team_header",  (900, 208, 1080, 232)),
+                ("personal_pct", (305, 315, 680, 345)),
             ]:
                 print(f"  {label}: {_ocr_line(img, region)!r}")
 

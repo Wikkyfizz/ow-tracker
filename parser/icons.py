@@ -8,22 +8,22 @@ import numpy as np
 
 ICONS_DIR = Path(__file__).parent / "hero_icons"
 
-# Approximate bounding boxes for each hero portrait slot in a 1920x1080 screenshot.
-# Slot order (top to bottom): player 1–5 on each side.
-# These are placeholder values — tune once you have real screenshots.
+# Hero portrait slots in the TEAMS tab (1920×1080).
+# Portraits are circular crops inside the left side of the table.
+# Row centres match MY_TEAM_ROW_Y / ENEMY_TEAM_ROW_Y in ocr.py (±28 px).
 MY_TEAM_SLOTS = [
-    (18, 244, 80, 296),
-    (18, 312, 80, 364),
-    (18, 380, 80, 432),
-    (18, 448, 80, 500),
-    (18, 516, 80, 568),
+    (418, 242, 478, 298),
+    (418, 310, 478, 366),
+    (418, 378, 478, 434),
+    (418, 446, 478, 502),
+    (418, 514, 478, 570),
 ]
 ENEMY_TEAM_SLOTS = [
-    (18, 646, 80, 698),
-    (18, 714, 80, 766),
-    (18, 782, 80, 834),
-    (18, 850, 80, 902),
-    (18, 918, 80, 970),
+    (418, 644, 478, 700),
+    (418, 712, 478, 768),
+    (418, 780, 478, 836),
+    (418, 848, 478, 904),
+    (418, 916, 478, 972),
 ]
 
 _template_cache: dict = {}
@@ -98,19 +98,14 @@ def extract_heroes(img_path: str) -> dict:
                 scores.append(score)
 
         confidence = sum(scores) / len(scores) if scores else 0.0
-        # Template matching on OW2's in-game portraits is unreliable below ~0.5
-        if confidence < 0.5:
-            return {
-                "my_heroes": [],
-                "enemy_heroes": [],
-                "confidence": round(confidence, 2),
-                "warning": f"Hero detection confidence too low ({confidence:.0%}) — enter heroes manually",
-            }
-        return {
-            "my_heroes": my_heroes,
+        result = {
+            "my_heroes":    my_heroes,
             "enemy_heroes": enemy_heroes,
-            "confidence": round(confidence, 2),
+            "confidence":   round(confidence, 2),
         }
+        if confidence < 0.5:
+            result["warning"] = f"Hero detection confidence low ({confidence:.0%}) — results may be wrong"
+        return result
     except Exception as e:
         return {"my_heroes": [], "enemy_heroes": [], "confidence": 0.0, "warning": str(e)}
 
