@@ -11,6 +11,9 @@ let activeSession = null;
 let sessionTimerInterval = null;
 let sessionMatches = [];
 
+// Sessions page state
+let pendingSessionExpand = null;
+
 // Modal state
 let modalIsHistorical = false;
 let mModalMyHeroes = [];
@@ -47,6 +50,7 @@ function onPageEnter(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'history')   loadHistory();
   if (page === 'analytics') loadAnalyticsTab('a-heroes');
+  if (page === 'sessions')  loadSessionsPage();
   if (page === 'queue')     loadQueue();
   if (page === 'settings')  loadSettings();
   if (page === 'session')   loadSessionPage();
@@ -209,7 +213,7 @@ function updateSessionNavBtn() {
     textEl.textContent = '⏺ ' + formatDuration(elapsed);
   } else {
     btn.classList.remove('live');
-    textEl.textContent = 'Start Session';
+    textEl.textContent = 'Live Session';
   }
 }
 
@@ -299,24 +303,12 @@ function renderSessionGames() {
   const list = document.getElementById('sess-games-list');
   if (!sessionMatches.length) {
     list.innerHTML = '<p style="color:var(--muted);padding:12px 0">No games yet.</p>';
-    document.getElementById('ss-game-count');
     return;
   }
-  list.innerHTML = [...sessionMatches].reverse().map(m => {
-    const myH   = JSON.parse(m.my_heroes || '[]');
-    const heroStr = myH.map(h => h.hero + (myH.length > 1 ? ' ' + h.pct + '%' : '')).join(', ') || '—';
-    const pracDotClass = { Y: 'practiced-y', 'Sort of': 'practiced-so', N: 'practiced-n' }[m.practiced] || 'practiced-none';
-    const pracTitle    = m.practiced ? `Practiced: ${m.practiced}` : 'Practice not logged';
-    const statsStr     = [m.elims != null ? `${m.elims}E` : null, m.deaths != null ? `${m.deaths}D` : null, m.damage != null ? numFmt(m.damage) + ' DMG' : null].filter(Boolean).join(' · ') || '';
-    return `<div class="sess-game-row">
-      <span class="outcome-${m.outcome}" style="width:44px;flex-shrink:0">${m.outcome}</span>
-      <span class="sess-game-map">${m.map}</span>
-      <span class="sess-game-heroes">${heroStr}</span>
-      <span class="sess-game-stats">${statsStr}</span>
-      <span class="practiced-dot ${pracDotClass}" title="${pracTitle}"></span>
-      <button class="btn btn-secondary btn-sm" onclick="openEditMatch(${m.id})">Edit</button>
-    </div>`;
-  }).join('');
+  list.innerHTML = [...sessionMatches].reverse().map(m => renderMatchCard(m)).join('');
+  list.querySelectorAll('.match-card-header').forEach(h => {
+    h.addEventListener('click', () => h.closest('.match-card').classList.toggle('expanded'));
+  });
 }
 
 async function updateQueueHint() {
@@ -372,8 +364,117 @@ async function loadRecentSessions() {
 }
 
 function viewSession(id) {
-  // TODO: expand session detail — placeholder
-  console.log('View session', id);
+  pendingSessionExpand = id;
+  document.querySelector('.nav-btn[data-page="sessions"]').click();
+}
+
+// ── SESSIONS PAGE ─────────────────────────────────────────────────────────────
+async function loadSessionsPage() {
+  const el       = document.getElementById('sessions-list');
+  el.innerHTML   = '<div class="loading" style="padding:24px 0;color:var(--dim)">Loading…</div>';
+  const sessions = await api.get('/api/sessions');
+  const finished = sessions.filter(s => s.ended_at);
+
+  if (!finished.length) {
+    el.innerHTML = '<div class="empty"><h3>No completed sessions yet</h3><p>Start a session to begin tracking your play.</p></div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="sessions-list">${finished.map(s => renderSessionHistCard(s)).join('')}</div>`;
+
+  el.querySelectorAll('.sess-hist-header').forEach(header => {
+    header.addEventListener('click', () => toggleSessionCard(header.closest('.sess-hist-card')));
+  });
+
+  if (pendingSessionExpand) {
+    const expandId = pendingSessionExpand;
+    pendingSessionExpand = null;
+    const card = document.getElementById(`shc-${expandId}`);
+    if (card) {
+      await toggleSessionCard(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+}
+
+function renderSessionHistCard(s) {
+  const wins   = s.wins        || 0;
+  const losses = s.losses      || 0;
+  const games  = s.match_count || 0;
+  const wr     = games ? wins / games : null;
+  const title  = s.name
+    || (s.goal ? s.goal.slice(0, 60) : null)
+    || new Date(s.started_at || s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const dateStr = new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  let dur = '';
+  if (s.started_at && s.ended_at) {
+    const secs = Math.floor((new Date(s.ended_at) - new Date(s.started_at)) / 1000);
+    dur = formatDuration(secs);
+  }
+  const metaParts = [dateStr, dur, games + 'G'].filter(Boolean);
+  const wrHtml = wr != null ? `<span class="sess-hist-wr ${wrClass(wr)}">${pct(wr)}</span>` : '';
+
+  return `<div class="sess-hist-card" id="shc-${s.id}">
+    <div class="sess-hist-header">
+      <span class="sess-hist-title">${title}</span>
+      <span class="sess-hist-wl">
+        <span class="wr-good">${wins}W</span><span style="color:var(--dim)"> – </span><span class="wr-bad">${losses}L</span>
+      </span>
+      ${wrHtml}
+      <span class="sess-hist-meta">${metaParts.join(' · ')}</span>
+      <span class="sess-hist-chevron">▼</span>
+    </div>
+    <div class="sess-hist-body" id="shb-${s.id}">
+      <div class="loading" style="padding:16px 0;color:var(--dim)">Loading…</div>
+    </div>
+  </div>`;
+}
+
+async function toggleSessionCard(card) {
+  const id = card.id.replace('shc-', '');
+  if (!card.classList.contains('expanded') && !card.dataset.loaded) {
+    const data    = await api.get(`/api/sessions/${id}`);
+    const matches = data.matches || [];
+    const body    = document.getElementById(`shb-${id}`);
+
+    if (!matches.length) {
+      body.innerHTML = '<div style="color:var(--dim);padding:16px 0;font-size:13px">No games logged in this session.</div>';
+    } else {
+      const spineHtml = buildSpine(matches);
+      const goalHtml  = data.goal
+        ? `<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:14px">Goal: ${data.goal}</div>`
+        : '';
+      body.innerHTML = `
+        <div class="sess-spine-row">${spineHtml}</div>
+        ${goalHtml}
+        <div class="sess-matches">${[...matches].reverse().map(m => renderMatchCard(m)).join('')}</div>
+      `;
+      body.querySelectorAll('.match-card-header').forEach(h => {
+        h.addEventListener('click', () => h.closest('.match-card').classList.toggle('expanded'));
+      });
+    }
+    card.dataset.loaded = '1';
+  }
+  card.classList.toggle('expanded');
+}
+
+function buildSpine(matches) {
+  const pips = matches.map(m => {
+    const oc = m.outcome === 'Win' ? 'win' : m.outcome === 'Loss' ? 'loss' : 'draw';
+    return `<span class="spine-pip ${oc}"></span>`;
+  }).join('');
+  // Streak summary
+  let streak = 0, streakType = '';
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const oc = matches[i].outcome;
+    if (i === matches.length - 1) { streak = 1; streakType = oc; }
+    else if (oc === streakType)   streak++;
+    else break;
+  }
+  const streakHtml = streak > 1
+    ? `<span class="spine-streak">${streak} ${streakType} streak</span>`
+    : '';
+  return `<div class="momentum-spine">${pips}${streakHtml}</div>`;
 }
 
 function openEditMatch(id) {
@@ -608,12 +709,13 @@ async function saveModalGame() {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 async function loadDashboard() {
-  const [dash, sr, mapWr, heroWr, baseline] = await Promise.all([
+  const [dash, sr, mapWr, heroWr, baseline, sessions] = await Promise.all([
     api.get('/api/analytics/dashboard'),
     api.get('/api/analytics/sr-timeline'),
     api.get('/api/analytics/map-winrates'),
     api.get('/api/analytics/hero-winrates'),
     api.get('/api/baseline'),
+    api.get('/api/sessions'),
   ]);
 
   const total = dash.total || 0;
@@ -641,10 +743,73 @@ async function loadDashboard() {
   document.getElementById('d-map').textContent  = dash.best_map  || '—';
 
   renderRanks(dash.ranks || []);
+  renderDashSessions(sessions);
+  renderImproving(dash);
   renderSrChart(sr);
   renderMapChart(mapWr.slice(0, 8));
   renderHeroWrTable(heroWr.slice(0, 15));
   renderBaselineTable(baseline);
+}
+
+function renderDashSessions(sessions) {
+  const el       = document.getElementById('dash-recent-sessions');
+  const finished = sessions.filter(s => s.ended_at).slice(0, 5);
+  if (!finished.length) {
+    el.innerHTML = '<div style="padding:16px 0;color:var(--dim);font-size:13px">No completed sessions yet — start one to see it here.</div>';
+    return;
+  }
+  el.innerHTML = finished.map(s => {
+    const wins    = s.wins   || 0;
+    const losses  = s.losses || 0;
+    const games   = s.match_count || 0;
+    const wr      = games ? wins / games : null;
+    const title   = s.name || (s.goal ? s.goal.slice(0, 50) : null)
+                  || new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dateStr = new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let dur = '';
+    if (s.started_at && s.ended_at) {
+      const secs = Math.floor((new Date(s.ended_at) - new Date(s.started_at)) / 1000);
+      dur = formatDuration(secs);
+    }
+    const wrStr = wr != null ? `${pct(wr)} WR` : '';
+    return `<div class="dash-sess-card" onclick="viewSession(${s.id})">
+      <div class="dash-sess-card-title">${title}</div>
+      <div class="dash-sess-card-wl">
+        <span class="wl-w">${wins}W</span><span class="wl-sep">–</span><span class="wl-l">${losses}L</span>
+      </div>
+      <div class="dash-sess-card-meta">${[dateStr, wrStr, dur].filter(Boolean).join(' · ')}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderImproving(dash) {
+  const el      = document.getElementById('dash-improving');
+  const overall = dash.win_rate;
+  const last20  = dash.win_rate_last20;
+  if (overall == null || dash.total < 5) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:13px">Need more games to compare.</div>';
+    return;
+  }
+  const delta    = last20 != null ? last20 - overall : null;
+  const deltaPct = delta != null ? (delta * 100).toFixed(1) : null;
+  const dir      = delta == null ? 'flat' : delta > 0.02 ? 'up' : delta < -0.02 ? 'down' : 'flat';
+  const arrow    = { up: '↑', down: '↓', flat: '→' }[dir];
+  const label20  = last20 != null ? `<span class="improving-big ${wrClass(last20)}">${pct(last20)}</span>` : '<span class="improving-big" style="color:var(--dim)">—</span>';
+  const deltaHtml = deltaPct != null
+    ? `<span class="improving-delta ${dir}">${arrow} ${deltaPct > 0 ? '+' : ''}${deltaPct}%</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="improving-label" style="margin-bottom:6px">Last 20 games</div>
+    <div class="improving-row">
+      ${label20}
+      ${deltaHtml}
+    </div>
+    <div style="font-size:12px;color:var(--dim)">vs all-time ${pct(overall)} · ${dash.total} games total</div>
+    ${dir === 'up'   ? '<div style="font-size:12px;color:var(--win);margin-top:8px">Trending up — recent form is above your average.</div>'  : ''}
+    ${dir === 'down' ? '<div style="font-size:12px;color:var(--loss);margin-top:8px">Recent form is below your average — room to recalibrate.</div>' : ''}
+    ${dir === 'flat' ? '<div style="font-size:12px;color:var(--muted);margin-top:8px">Consistent — recent form matches your overall average.</div>' : ''}
+  `;
 }
 
 function renderSrChart(data) {
@@ -655,8 +820,8 @@ function renderSrChart(data) {
     type: 'line',
     data: {
       labels: data.map((_, i) => i + 1),
-      datasets: [{ data: data.map(d => d.rank_score), borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,.1)', pointRadius: 2, tension: 0.3, fill: true }]
+      datasets: [{ data: data.map(d => d.rank_score), borderColor: '#e0518a',
+        backgroundColor: 'rgba(224,81,138,.1)', pointRadius: 2, tension: 0.3, fill: true }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -797,32 +962,100 @@ async function loadHistory() {
   if (map)     params.set('map', map);
   if (outcome) params.set('outcome', outcome);
   if (hero)    params.set('hero', hero);
-  const data = await api.get('/api/matches?' + params);
-  const tbody = document.getElementById('history-body');
+  const data  = await api.get('/api/matches?' + params);
+  const listEl = document.getElementById('history-list');
+
   if (!data.matches.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="empty"><p>No matches yet.</p></td></tr>';
+    listEl.innerHTML = '<div class="empty"><h3>No matches yet</h3><p>Log a game or drop a screenshot into your inbox folder to get started.</p></div>';
     return;
   }
-  tbody.innerHTML = data.matches.map(m => {
-    const myH     = JSON.parse(m.my_heroes || '[]');
-    const heroStr = myH.map(h => `${h.hero}${myH.length > 1 ? ' '+h.pct+'%' : ''}`).join(', ');
-    const date    = new Date(m.played_at).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-    const rankStr = m.rank_tier ? `${m.rank_tier} ${m.rank_division} ${m.rank_pct ? m.rank_pct+'%' : ''}` : '—';
-    return `<tr>
-      <td>${m.id}</td>
-      <td style="white-space:nowrap">${date}</td>
-      <td>${m.map}</td>
-      <td class="outcome-${m.outcome}">${m.outcome}</td>
-      <td style="max-width:180px">${heroStr || '—'}</td>
-      <td>${m.enemy_comp || '—'}</td>
-      <td class="num">${numFmt(m.elims)}</td>
-      <td class="num">${numFmt(m.deaths)}</td>
-      <td class="num">${numFmt(m.damage)}</td>
-      <td style="font-size:12px">${rankStr}</td>
-      <td>${m.stack_size > 1 ? '×'+m.stack_size : '—'}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="deleteMatch(${m.id})">✕</button></td>
-    </tr>`;
-  }).join('');
+
+  listEl.innerHTML = data.matches.map(m => renderMatchCard(m)).join('');
+
+  listEl.querySelectorAll('.match-card-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.match-card').classList.toggle('expanded');
+    });
+  });
+}
+
+function renderMatchCard(m) {
+  const myH    = JSON.parse(m.my_heroes    || '[]');
+  const enemyH = JSON.parse(m.enemy_heroes || '[]');
+  const bans   = JSON.parse(m.bans         || '[]');
+  const date   = new Date(m.played_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const oc     = m.outcome === 'Win' ? 'win' : m.outcome === 'Loss' ? 'loss' : 'draw';
+
+  // Heroes — role-colored names
+  const heroStr = myH.map(h => {
+    const rc     = roleClass(getHeroRole(h.hero));
+    const pctStr = myH.length > 1 ? ` <span style="color:var(--dim);font-size:11px">${h.pct}%</span>` : '';
+    return `<span style="color:var(--${rc === 'unknown' ? 'muted' : rc})">${h.hero}${pctStr}</span>`;
+  }).join('<span style="color:var(--dim)"> · </span>') || '—';
+
+  // KDA compact
+  const kda = [m.elims != null ? `${m.elims}E` : null, m.deaths != null ? `${m.deaths}D` : null, m.assists != null ? `${m.assists}A` : null].filter(Boolean).join('/');
+
+  // Rank chip
+  const rankHtml = m.rank_tier
+    ? `<span class="match-card-sr">${m.rank_tier} ${m.rank_division}${m.rank_pct != null ? ' · ' + m.rank_pct + '%' : ''}</span>`
+    : '';
+
+  // Expanded body
+  const statsHtml   = buildStatsRow(m);
+  const enemyStr    = enemyH.map(h => h.hero).join(', ') || '—';
+  const bansHtml    = bans.length ? `<div><div class="section-label">Bans</div><div style="font-size:13px">${bans.join(', ')}</div></div>` : '';
+  const stackHtml   = m.stack_size > 1 ? `<div><div class="section-label">Stack</div><div style="font-size:13px">×${m.stack_size}</div></div>` : '';
+  const notesHtml   = m.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--muted);border-left:2px solid var(--border);padding-left:10px">${m.notes}</div>` : '';
+  const pracDot     = m.practiced ? { Y: 'practiced-y', 'Sort of': 'practiced-so', N: 'practiced-n' }[m.practiced] || '' : '';
+  const pracHtml    = m.practiced
+    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:10px"><span class="practiced-dot ${pracDot}"></span><span style="font-size:12px;color:var(--muted)">Goal focus: ${m.practiced}${m.practice_notes ? ' — ' + m.practice_notes : ''}</span></div>`
+    : '';
+
+  return `<div class="match-card ${oc}" id="mc-${m.id}">
+    <div class="match-card-header">
+      <span class="match-card-outcome outcome-${m.outcome}">${m.outcome}</span>
+      <span class="match-card-map">${m.map}</span>
+      <span class="match-card-heroes">${heroStr}</span>
+      ${kda ? `<span class="match-card-kda">${kda}</span>` : ''}
+      <span style="font-size:12px;color:var(--dim);flex-shrink:0;white-space:nowrap">${date}</span>
+      ${rankHtml}
+      <span class="match-card-chevron">▼</span>
+    </div>
+    <div class="match-card-body">
+      ${statsHtml}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:14px">
+        <div>
+          <div class="section-label">Enemy Comp</div>
+          <div style="font-size:13px">${m.enemy_comp || '—'}</div>
+          <div style="font-size:12px;color:var(--dim);margin-top:2px">${enemyStr}</div>
+        </div>
+        ${bansHtml}
+        ${stackHtml}
+      </div>
+      ${notesHtml}
+      ${pracHtml}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditMatch(${m.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMatch(${m.id})">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildStatsRow(m) {
+  const stats = [
+    { label: 'Elims',      value: m.elims      != null ? m.elims                : null },
+    { label: 'Deaths',     value: m.deaths     != null ? m.deaths               : null },
+    { label: 'Assists',    value: m.assists    != null ? m.assists               : null },
+    { label: 'Damage',     value: m.damage     != null ? numFmt(m.damage)        : null },
+    { label: 'Healing',    value: m.healing    != null ? numFmt(m.healing)       : null },
+    { label: 'Mitigation', value: m.mitigation != null ? numFmt(m.mitigation)    : null },
+  ].filter(s => s.value != null);
+  if (!stats.length) return '';
+  return `<div class="stat-strip">${stats.map(s =>
+    `<div class="stat-strip-item"><div class="stat-strip-label">${s.label}</div><div class="stat-strip-value">${s.value}</div></div>`
+  ).join('')}</div>`;
 }
 
 document.getElementById('h-filter-btn').addEventListener('click', loadHistory);
@@ -834,6 +1067,35 @@ async function deleteMatch(id) {
 }
 
 // ── ANALYTICS ─────────────────────────────────────────────────────────────────
+// ── ANALYTICS HELPERS ─────────────────────────────────────────────────────────
+function aBarColor(wr) {
+  if (wr >= 0.55) return 'var(--win)';
+  if (wr >= 0.45) return 'var(--gold)';
+  return 'var(--loss)';
+}
+
+function renderARow({ label, sub, wr, barFrac, barColor, gamesStr, conf, extra }) {
+  const frac  = barFrac != null ? barFrac : (wr ?? 0);
+  const barW  = Math.round(Math.min(frac, 1) * 100);
+  const color = barColor ?? (wr != null ? aBarColor(wr) : 'var(--accent)');
+  const valStr = wr != null ? pct(wr) : '';
+  const valCls = wr != null ? wrClass(wr) : '';
+  return `<div class="a-row">
+    <span class="a-label">${label}</span>
+    ${sub ? `<span class="a-sub">${sub}</span>` : ''}
+    <span class="a-bar-wrap"><span class="a-bar" style="width:${barW}%;background:${color}"></span></span>
+    ${valStr ? `<span class="a-pct ${valCls}">${valStr}</span>` : '<span class="a-pct"></span>'}
+    ${gamesStr ? `<span class="a-games">${gamesStr}</span>` : '<span class="a-games"></span>'}
+    ${conf ? '<span class="conf-tag">low n</span>' : ''}
+    ${extra ?? ''}
+  </div>`;
+}
+
+function aEmpty(msg) {
+  return `<div class="empty" style="padding:20px 0"><p>${msg}</p></div>`;
+}
+
+// ── ANALYTICS ─────────────────────────────────────────────────────────────────
 const analyticsLoaded = {};
 async function loadAnalyticsTab(tab) {
   if (analyticsLoaded[tab]) return;
@@ -841,70 +1103,154 @@ async function loadAnalyticsTab(tab) {
 
   if (tab === 'a-heroes') {
     const data = await api.get('/api/analytics/hero-winrates');
-    document.getElementById('t-hero-wr').innerHTML = data.map(h =>
-      `<tr><td>${h.hero}</td>
-       <td><span class="${wrClass(h.win_rate)}">${pct(h.win_rate)}</span> ${wrBar(h.win_rate)}</td>
-       <td>${h.weighted_games}</td>
-       <td>${wrBar(h.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) {
+      ['a-heroes-conc-body','a-heroes-wr-body'].forEach(id => document.getElementById(id).innerHTML = aEmpty('No games logged yet.'));
+      document.getElementById('a-heroes-conc-ans').textContent = '';
+      document.getElementById('a-heroes-wr-ans').textContent   = '';
+      return;
+    }
+    const totalW  = data.reduce((s, h) => s + h.weighted_games, 0);
+    const byUsage = [...data].sort((a, b) => b.weighted_games - a.weighted_games);
+    const topPct  = totalW > 0 ? Math.round(byUsage[0].weighted_games / totalW * 100) : 0;
+
+    document.getElementById('a-heroes-conc-ans').textContent = topPct >= 60
+      ? `One-trick risk — ${byUsage[0].hero} is ${topPct}% of your playtime.`
+      : topPct >= 40
+        ? `Main lean — ${byUsage[0].hero} at ${topPct}% across a pool of ${data.length}.`
+        : `Diversified pool of ${data.length} heroes, top at ${topPct}%.`;
+
+    document.getElementById('a-heroes-conc-body').innerHTML = byUsage.map(h => {
+      const usagePct = totalW > 0 ? h.weighted_games / totalW : 0;
+      return renderARow({
+        label: h.hero,
+        sub: `${Math.round(h.weighted_games)}G`,
+        barFrac: usagePct,
+        barColor: 'var(--accent)',
+        gamesStr: `${Math.round(usagePct * 100)}%`,
+        conf: h.weighted_games < 5,
+      });
+    }).join('');
+
+    const byWR = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual  = byWR.filter(h => h.weighted_games >= 3);
+    document.getElementById('a-heroes-wr-ans').textContent = qual.length < 2
+      ? 'Need 3+ games per hero to compare win rates.'
+      : `Best: ${qual[0].hero} (${pct(qual[0].win_rate)}). Worst: ${qual[qual.length-1].hero} (${pct(qual[qual.length-1].win_rate)}).`;
+
+    document.getElementById('a-heroes-wr-body').innerHTML = byWR.map(h =>
+      renderARow({ label: h.hero, sub: h.weighted_games >= 3 ? null : '', wr: h.win_rate, gamesStr: Math.round(h.weighted_games)+'G', conf: h.weighted_games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-maps') {
     const data = await api.get('/api/analytics/map-winrates');
-    document.getElementById('t-map-wr').innerHTML = data.map(m =>
-      `<tr><td>${m.map}</td><td>${m.game_mode}</td><td>${m.comp_affinity}</td>
-       <td><span class="${wrClass(m.win_rate)}">${pct(m.win_rate)}</span></td>
-       <td>${m.games} (${m.wins}W)</td>
-       <td>${wrBar(m.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="6" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-maps-body').innerHTML = aEmpty('No map data yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual   = sorted.filter(m => m.games >= 3);
+    document.getElementById('a-maps-ans').textContent = qual.length < 2
+      ? 'Need more variety to compare maps.'
+      : `Best: ${qual[0].map} (${pct(qual[0].win_rate)}). Worst: ${qual[qual.length-1].map} (${pct(qual[qual.length-1].win_rate)}).`;
+    document.getElementById('a-maps-body').innerHTML = sorted.map(m =>
+      renderARow({ label: m.map, sub: m.game_mode, wr: m.win_rate, gamesStr: m.games+'G', conf: m.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-comp') {
     const data = await api.get('/api/analytics/comp-matchups');
-    document.getElementById('t-comp-mu').innerHTML = data.map(r =>
-      `<tr><td>${r.my_comp}</td><td>${r.enemy_comp}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-comp-body').innerHTML = aEmpty('No matchup data yet.'); return; }
+    // Aggregate to enemy-archetype grain
+    const agg = {};
+    data.forEach(r => {
+      if (!agg[r.enemy_comp]) agg[r.enemy_comp] = { wins: 0, games: 0 };
+      agg[r.enemy_comp].wins  += Math.round(r.win_rate * r.games);
+      agg[r.enemy_comp].games += r.games;
+    });
+    const aggArr = Object.entries(agg)
+      .map(([ec, { wins, games }]) => ({ enemy_comp: ec, win_rate: wins / games, games }))
+      .sort((a, b) => a.win_rate - b.win_rate);
+    const worst = aggArr[0];
+    document.getElementById('a-comp-ans').textContent =
+      `Hardest matchup: vs ${worst.enemy_comp} (${pct(worst.win_rate)}, ${worst.games} games).`;
+    document.getElementById('a-comp-body').innerHTML = aggArr.map(r =>
+      renderARow({ label: `vs ${r.enemy_comp}`, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-enemy') {
     const [vhData, hmData] = await Promise.all([
       api.get('/api/analytics/vs-enemy-hero'),
       api.get('/api/analytics/hero-map'),
     ]);
-    document.getElementById('t-vs-hero').innerHTML = vhData.map(r =>
-      `<tr><td>${r.enemy_hero}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="3" class="empty">No data</td></tr>';
-    document.getElementById('t-hero-map').innerHTML = hmData.slice(0,30).map(r =>
-      `<tr><td>${r.hero}</td><td>${r.map}</td><td>${r.comp_affinity}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.weighted_games}</td></tr>`
-    ).join('') || '<tr><td colspan="5" class="empty">No data</td></tr>';
+    if (!vhData.length) {
+      document.getElementById('a-enemy-body').innerHTML = aEmpty('No vs-hero data yet.');
+    } else {
+      const sorted  = [...vhData].sort((a, b) => a.win_rate - b.win_rate);
+      const qual    = sorted.filter(r => r.games >= 3);
+      const nemesis = qual[0] ?? sorted[0];
+      document.getElementById('a-enemy-ans').textContent =
+        `Nemesis: ${nemesis.enemy_hero} — you win ${pct(nemesis.win_rate)} in ${nemesis.games} games.`;
+      document.getElementById('a-enemy-body').innerHTML = sorted.map(r =>
+        renderARow({ label: r.enemy_hero, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+      ).join('');
+    }
+    if (!hmData.length) {
+      document.getElementById('a-heromap-body').innerHTML = aEmpty('No hero × map data yet.');
+    } else {
+      const sorted = [...hmData].sort((a, b) => b.win_rate - a.win_rate).slice(0, 25);
+      const top    = sorted[0];
+      document.getElementById('a-heromap-ans').textContent =
+        `Best combo: ${top.hero} on ${top.map} (${pct(top.win_rate)}, ${Math.round(top.weighted_games)}G).`;
+      document.getElementById('a-heromap-body').innerHTML = sorted.map(r =>
+        renderARow({ label: `${r.hero} on ${r.map}`, sub: r.comp_affinity, wr: r.win_rate, gamesStr: Math.round(r.weighted_games)+'G', conf: r.weighted_games < 5 })
+      ).join('');
+    }
   }
+
   if (tab === 'a-teammates') {
     const data = await api.get('/api/analytics/teammate-winrates');
-    document.getElementById('t-teammates').innerHTML = data.map(r =>
-      `<tr><td>${r.player}</td><td>${r.alias||'—'}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-teammates-body').innerHTML = aEmpty('No consistent teammate data yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual   = sorted.filter(r => r.games >= 3);
+    document.getElementById('a-teammates-ans').textContent = !qual.length
+      ? 'Need 3+ shared games to rank teammates.'
+      : `Best synergy: ${qual[0].player} (${pct(qual[0].win_rate)}, ${qual[0].games} games).`;
+    document.getElementById('a-teammates-body').innerHTML = sorted.map(r =>
+      renderARow({ label: r.player, sub: r.alias || null, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-bans') {
     const data = await api.get('/api/analytics/ban-stats');
-    document.getElementById('t-bans').innerHTML = data.map(r =>
-      `<tr><td>${r.hero}</td><td>${r.ban_count}</td>
-       <td>${pct(r.ban_rate)}</td>
-       <td><span class="${wrClass(r.win_rate_when_banned)}">${pct(r.win_rate_when_banned)}</span></td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No ban data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-bans-body').innerHTML = aEmpty('No ban data recorded yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.ban_count - a.ban_count);
+    const top    = sorted[0];
+    document.getElementById('a-bans-ans').textContent =
+      `Most banned: ${top.hero} (${top.ban_count}×). Your WR with them banned: ${pct(top.win_rate_when_banned)}.`;
+    const maxBans = sorted[0].ban_count;
+    document.getElementById('a-bans-body').innerHTML = sorted.map(r =>
+      renderARow({
+        label: r.hero,
+        sub: `${pct(r.ban_rate)} ban rate`,
+        barFrac: r.ban_count / maxBans,
+        barColor: 'var(--accent)',
+        wr: r.win_rate_when_banned,
+        gamesStr: r.ban_count+'×',
+        extra: `<span class="a-pct ${wrClass(r.win_rate_when_banned)}" style="width:auto;margin-left:4px">${pct(r.win_rate_when_banned)} WR</span>`,
+      })
+    ).join('');
   }
+
   if (tab === 'a-stack') {
     const data = await api.get('/api/analytics/stack-winrates');
-    document.getElementById('t-stack').innerHTML = data.map(r =>
-      `<tr><td>${r.label}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td>
-       <td>${wrBar(r.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-stack-body').innerHTML = aEmpty('No stack data yet.'); return; }
+    const best = [...data].sort((a, b) => b.win_rate - a.win_rate)[0];
+    const solo = data.find(r => r.label === 'Solo' || r.label === '1');
+    document.getElementById('a-stack-ans').textContent = best.label === (solo?.label)
+      ? `You perform best solo (${pct(best.win_rate)}).`
+      : `Stack of ${best.label} gives your best win rate at ${pct(best.win_rate)}.${solo ? ` Solo: ${pct(solo.win_rate)}.` : ''}`;
+    document.getElementById('a-stack-body').innerHTML = data.map(r =>
+      renderARow({ label: r.label, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
 }
 
@@ -942,25 +1288,49 @@ async function loadQueue() {
   if (!data.queue.length) { emptyEl.style.display = 'flex'; listEl.innerHTML = ''; return; }
   emptyEl.style.display = 'none';
   listEl.innerHTML = data.queue.map((item, i) => {
-    const p = item.parsed || {};
-    const tabBadge = p.tab_type ? `<span style="background:var(--accent);color:#000;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:8px">${p.tab_type}</span>` : '';
-    let detailLine = '';
-    if (p.tab_type === 'SUMMARY') {
-      const len = p.game_length_s ? Math.floor(p.game_length_s/60) + ':' + String(p.game_length_s%60).padStart(2,'0') : '?';
-      const dt  = p.played_at ? new Date(p.played_at).toLocaleString() : '?';
-      detailLine = `<p style="margin-bottom:8px;color:var(--muted)">Map: <strong>${p.map||'?'}</strong> &nbsp;|&nbsp; Outcome: <strong class="outcome-${p.outcome}">${p.outcome||'?'}</strong> &nbsp;|&nbsp; Length: ${len} &nbsp;|&nbsp; ${dt}</p>`;
+    const p        = item.parsed || {};
+    const tabType  = p.tab_type || '';
+    const tabClass = tabType.toLowerCase() || 'unknown';
+    const tabBadge = tabType ? `<span class="tab-badge ${tabClass}">${tabType}</span>` : '';
+
+    let detailHtml = '';
+    if (tabType === 'SUMMARY') {
+      const len = p.game_length_s
+        ? Math.floor(p.game_length_s / 60) + ':' + String(p.game_length_s % 60).padStart(2, '0')
+        : '—';
+      const dt  = p.played_at ? new Date(p.played_at).toLocaleString() : '—';
+      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      detailHtml = `<div class="queue-item-detail">
+        <strong>${p.map || '—'}</strong>
+        &nbsp;·&nbsp; <span class="outcome-${p.outcome}">${p.outcome || '—'}</span>
+        &nbsp;·&nbsp; ${len} &nbsp;·&nbsp; ${dt}
+        ${heroes !== '—' ? `<br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>` : ''}
+      </div>`;
+    } else if (tabType === 'TEAM') {
+      const stats = ['elims','assists','deaths','damage','healing','mitigation']
+        .map(k => p[k] != null ? `${k[0].toUpperCase() + k.slice(1, 3)}: <strong>${p[k]}</strong>` : null)
+        .filter(Boolean).join(' &nbsp;·&nbsp; ');
+      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      detailHtml = `<div class="queue-item-detail">
+        ${stats || 'No stats parsed'}
+        <br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>
+      </div>`;
+    } else if (tabType === 'PERSONAL') {
+      const hero = (p.my_heroes || [])[0]?.hero || '—';
+      detailHtml = `<div class="queue-item-detail">Detected hero: <strong>${hero}</strong> · Hero-specific stats not yet parsed.</div>`;
     } else {
-      const statsStr = ['elims','assists','deaths','damage','healing','mitigation']
-        .map(k => p[k] != null ? `${k[0].toUpperCase()+k.slice(1,3)}: ${p[k]}` : null).filter(Boolean).join(' | ');
-      detailLine = `<p style="margin-bottom:4px;color:var(--muted)">${statsStr || 'No stats parsed'}</p>
-        <p style="margin-bottom:8px">Heroes: ${(p.my_heroes||[]).map(h=>h.hero).join(', ')||'—'}</p>`;
+      detailHtml = `<div class="queue-item-detail" style="color:var(--dim)">Could not detect tab type.</div>`;
     }
-    return `<div class="card" style="margin-bottom:12px">
-      <h2 style="display:flex;align-items:center;gap:0">${item.filename}${tabBadge}</h2>
+
+    const warnings = (p.warnings || []).filter(w => !w.startsWith('Map and outcome'));
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="queue-item-header">
+        <span class="queue-item-filename">${item.filename}</span>${tabBadge}
+      </div>
       ${item.error ? `<div class="alert alert-warn">Parse error: ${item.error}</div>` : ''}
-      ${(p.warnings||[]).filter(w => !w.startsWith('Map and outcome')).map(w => `<div class="alert alert-warn">${w}</div>`).join('')}
-      ${detailLine}
-      <div style="display:flex; gap:8px; margin-top:12px">
+      ${warnings.map(w => `<div class="alert alert-warn">${w}</div>`).join('')}
+      ${detailHtml}
+      <div class="queue-item-actions">
         <button class="btn btn-primary btn-sm" onclick="confirmQueueItem(${i})">Confirm &amp; Edit</button>
         <button class="btn btn-danger btn-sm"  onclick="discardQueueItem('${item.filename}', ${i})">Discard</button>
       </div>
@@ -997,12 +1367,12 @@ function renderTrackedPlayers() {
   const el      = document.getElementById('tracked-list');
   const players = settingsData.tracked_players || [];
   el.innerHTML  = players.map(p =>
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-       <span>${p.name}</span>
-       <span style="color:var(--muted)">${p.alias}</span>
+    `<div class="tracked-player-row">
+       <span class="tracked-player-name">${p.name}</span>
+       <span class="tracked-player-alias">${p.alias || ''}</span>
        <button class="btn btn-secondary btn-sm" onclick="removeTrackedPlayer('${p.name}')">✕</button>
      </div>`
-  ).join('') || '<p style="color:var(--muted)">No tracked players yet.</p>';
+  ).join('') || '<p style="color:var(--muted);font-size:13px">No tracked players yet.</p>';
 }
 
 async function saveSettings() {
