@@ -608,12 +608,13 @@ async function saveModalGame() {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 async function loadDashboard() {
-  const [dash, sr, mapWr, heroWr, baseline] = await Promise.all([
+  const [dash, sr, mapWr, heroWr, baseline, sessions] = await Promise.all([
     api.get('/api/analytics/dashboard'),
     api.get('/api/analytics/sr-timeline'),
     api.get('/api/analytics/map-winrates'),
     api.get('/api/analytics/hero-winrates'),
     api.get('/api/baseline'),
+    api.get('/api/sessions'),
   ]);
 
   const total = dash.total || 0;
@@ -641,10 +642,73 @@ async function loadDashboard() {
   document.getElementById('d-map').textContent  = dash.best_map  || '—';
 
   renderRanks(dash.ranks || []);
+  renderDashSessions(sessions);
+  renderImproving(dash);
   renderSrChart(sr);
   renderMapChart(mapWr.slice(0, 8));
   renderHeroWrTable(heroWr.slice(0, 15));
   renderBaselineTable(baseline);
+}
+
+function renderDashSessions(sessions) {
+  const el       = document.getElementById('dash-recent-sessions');
+  const finished = sessions.filter(s => s.ended_at).slice(0, 5);
+  if (!finished.length) {
+    el.innerHTML = '<div style="padding:16px 0;color:var(--dim);font-size:13px">No completed sessions yet — start one to see it here.</div>';
+    return;
+  }
+  el.innerHTML = finished.map(s => {
+    const wins    = s.wins   || 0;
+    const losses  = s.losses || 0;
+    const games   = s.match_count || 0;
+    const wr      = games ? wins / games : null;
+    const title   = s.name || (s.goal ? s.goal.slice(0, 50) : null)
+                  || new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dateStr = new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let dur = '';
+    if (s.started_at && s.ended_at) {
+      const secs = Math.floor((new Date(s.ended_at) - new Date(s.started_at)) / 1000);
+      dur = formatDuration(secs);
+    }
+    const wrStr = wr != null ? `${pct(wr)} WR` : '';
+    return `<div class="dash-sess-card" onclick="viewSession(${s.id})">
+      <div class="dash-sess-card-title">${title}</div>
+      <div class="dash-sess-card-wl">
+        <span class="wl-w">${wins}W</span><span class="wl-sep">–</span><span class="wl-l">${losses}L</span>
+      </div>
+      <div class="dash-sess-card-meta">${[dateStr, wrStr, dur].filter(Boolean).join(' · ')}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderImproving(dash) {
+  const el      = document.getElementById('dash-improving');
+  const overall = dash.win_rate;
+  const last20  = dash.win_rate_last20;
+  if (overall == null || dash.total < 5) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:13px">Need more games to compare.</div>';
+    return;
+  }
+  const delta    = last20 != null ? last20 - overall : null;
+  const deltaPct = delta != null ? (delta * 100).toFixed(1) : null;
+  const dir      = delta == null ? 'flat' : delta > 0.02 ? 'up' : delta < -0.02 ? 'down' : 'flat';
+  const arrow    = { up: '↑', down: '↓', flat: '→' }[dir];
+  const label20  = last20 != null ? `<span class="improving-big ${wrClass(last20)}">${pct(last20)}</span>` : '<span class="improving-big" style="color:var(--dim)">—</span>';
+  const deltaHtml = deltaPct != null
+    ? `<span class="improving-delta ${dir}">${arrow} ${deltaPct > 0 ? '+' : ''}${deltaPct}%</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="improving-label" style="margin-bottom:6px">Last 20 games</div>
+    <div class="improving-row">
+      ${label20}
+      ${deltaHtml}
+    </div>
+    <div style="font-size:12px;color:var(--dim)">vs all-time ${pct(overall)} · ${dash.total} games total</div>
+    ${dir === 'up'   ? '<div style="font-size:12px;color:var(--win);margin-top:8px">Trending up — recent form is above your average.</div>'  : ''}
+    ${dir === 'down' ? '<div style="font-size:12px;color:var(--loss);margin-top:8px">Recent form is below your average — room to recalibrate.</div>' : ''}
+    ${dir === 'flat' ? '<div style="font-size:12px;color:var(--muted);margin-top:8px">Consistent — recent form matches your overall average.</div>' : ''}
+  `;
 }
 
 function renderSrChart(data) {

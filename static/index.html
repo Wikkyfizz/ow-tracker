@@ -28,34 +28,55 @@
 
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
+
+  <!-- Stat strip -->
   <div class="dash-grid" id="stat-cards">
     <div class="stat-card"><div class="label">Total Games</div><div class="value" id="d-total">—</div></div>
     <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="d-wr">—</div><div class="sub" id="d-wr-sub"></div></div>
     <div class="stat-card"><div class="label">Last 20</div><div class="value" id="d-wr20">—</div></div>
     <div class="stat-card"><div class="label">Streak</div><div class="value" id="d-streak">—</div></div>
-    <div class="stat-card"><div class="label">Best Hero</div><div class="value" id="d-hero" style="font-size:18px">—</div></div>
-    <div class="stat-card"><div class="label">Best Map</div><div class="value" id="d-map" style="font-size:18px">—</div></div>
+    <div class="stat-card"><div class="label">Best Hero</div><div class="value" id="d-hero" style="font-size:20px">—</div></div>
+    <div class="stat-card"><div class="label">Best Map</div><div class="value" id="d-map" style="font-size:20px">—</div></div>
   </div>
-  <div class="grid-2">
+
+  <!-- Band 1: Recent Sessions -->
+  <div class="dash-band">
+    <div class="section-label">Recent Sessions</div>
+    <div class="dash-sess-row" id="dash-recent-sessions">
+      <div class="loading" style="padding:16px 0;color:var(--dim)">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Band 2: Recent Form -->
+  <div class="grid-2" style="margin-top:14px">
     <div class="card accent-tank">
       <h2>SR Timeline</h2>
       <div class="chart-wrap"><canvas id="sr-chart"></canvas></div>
     </div>
+    <div class="card">
+      <h2>Are you improving?</h2>
+      <div id="dash-improving"><div class="loading" style="color:var(--dim)">—</div></div>
+    </div>
+  </div>
+
+  <!-- Band 3: Lifetime context (demoted) -->
+  <div class="grid-2" style="margin-top:14px">
     <div class="card accent-dps">
       <h2>Win Rate by Map (top 8)</h2>
       <div class="chart-wrap"><canvas id="map-chart"></canvas></div>
-    </div>
-  </div>
-  <div class="grid-2" style="margin-top:14px">
-    <div class="card">
-      <h2>Baseline — Competitive (OverFast)</h2>
-      <div id="baseline-table"><div class="loading">No baseline data — go to Settings → Fetch Baseline.</div></div>
     </div>
     <div class="card">
       <h2>Tracked Win Rates (weighted)</h2>
       <div id="hero-wr-table" class="table-wrap"><div class="loading">No matches logged yet.</div></div>
     </div>
   </div>
+  <div style="margin-top:14px">
+    <div class="card">
+      <h2>Baseline — Competitive (OverFast)</h2>
+      <div id="baseline-table"><div class="loading">No baseline data — go to Settings → Fetch Baseline.</div></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- SESSION -->

@@ -119,6 +119,53 @@ main { padding: 20px 24px; max-width: 1440px; margin: 0 auto; }
 .stat-card.win-card  { border-left-color: var(--win); }
 .stat-card.loss-card { border-left-color: var(--loss); }
 
+/* ── Dashboard session band ──────────────────────────────────────────────── */
+.dash-band { margin-top: 20px; margin-bottom: 4px; }
+.dash-sess-row {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding-bottom: 6px; margin-top: 8px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.dash-sess-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 3px solid var(--dim);
+  border-radius: 8px; padding: 14px 16px;
+  min-width: 190px; max-width: 240px; cursor: pointer; flex-shrink: 0;
+  transition: border-color .15s, background .15s;
+}
+.dash-sess-card:hover { background: var(--card-hi); border-left-color: var(--accent); }
+.dash-sess-card-title {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 10px;
+}
+.dash-sess-card-wl {
+  font-family: var(--font-m); font-size: 22px; font-weight: 500;
+  line-height: 1; margin-bottom: 6px;
+}
+.dash-sess-card-wl .wl-w { color: var(--win); }
+.dash-sess-card-wl .wl-sep { color: var(--dim); margin: 0 4px; font-size: 16px; }
+.dash-sess-card-wl .wl-l { color: var(--loss); }
+.dash-sess-card-meta { font-size: 11px; color: var(--dim); }
+
+/* ── Improving gauge ─────────────────────────────────────────────────────── */
+.improving-row {
+  display: flex; align-items: baseline; gap: 16px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.improving-big { font-family: var(--font-m); font-size: 36px; font-weight: 500; line-height: 1; }
+.improving-label {
+  font-family: var(--font-d); font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.improving-delta {
+  font-family: var(--font-m); font-size: 14px; padding: 3px 8px;
+  border-radius: 4px; flex-shrink: 0;
+}
+.improving-delta.up   { background: rgba(74,222,128,.10); color: var(--win); }
+.improving-delta.down { background: rgba(248,113,113,.10); color: var(--loss); }
+.improving-delta.flat { background: rgba(148,163,184,.08); color: var(--draw); }
+
 .wr-good { color: var(--win); }
 .wr-mid  { color: var(--gold); }
 .wr-bad  { color: var(--loss); }
