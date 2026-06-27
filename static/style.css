@@ -290,6 +290,41 @@ select option { background: var(--surface); }
 .alert-warn    { background: rgba(240,192,64,.08);  border: 1px solid rgba(240,192,64,.25);   color: var(--gold); }
 .alert-success { background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.25);  color: var(--win); }
 
+/* ── Queue ───────────────────────────────────────────────────────────────── */
+.tab-badge {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-d); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px; margin-left: 8px;
+  vertical-align: middle; flex-shrink: 0;
+}
+.tab-badge.summary  { background: rgba(224,81,138,.12); color: var(--accent);  border: 1px solid rgba(224,81,138,.3); }
+.tab-badge.team     { background: rgba(56,178,240,.12);  color: var(--accent2); border: 1px solid rgba(56,178,240,.3); }
+.tab-badge.personal { background: rgba(240,192,64,.10);  color: var(--gold);    border: 1px solid rgba(240,192,64,.25); }
+.tab-badge.unknown  { background: rgba(148,163,184,.08); color: var(--draw);    border: 1px solid rgba(148,163,184,.2); }
+
+.queue-item-header {
+  display: flex; align-items: center; margin-bottom: 10px; min-width: 0;
+}
+.queue-item-filename {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.queue-item-detail {
+  font-size: 13px; color: var(--muted); margin-bottom: 12px; line-height: 1.6;
+}
+.queue-item-detail strong { color: var(--text); font-weight: 500; }
+.queue-item-actions { display: flex; gap: 8px; }
+
+/* ── Settings ─────────────────────────────────────────────────────────────── */
+.tracked-player-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+.tracked-player-row:last-child { border-bottom: none; }
+.tracked-player-name { font-size: 13px; font-weight: 500; flex: 1; }
+.tracked-player-alias { font-size: 12px; color: var(--muted); }
+
 /* ── Queue banner ─────────────────────────────────────────────────────────── */
 .queue-banner {
   background: rgba(224,81,138,.08); border: 1px solid rgba(224,81,138,.25);

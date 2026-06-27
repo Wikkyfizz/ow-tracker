@@ -175,19 +175,19 @@
 
 <!-- QUEUE -->
 <div class="page" id="page-queue">
-  <div class="card" style="margin-bottom:16px">
-    <h2>Parse a screenshot manually</h2>
-    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+  <div class="card" style="margin-bottom:14px">
+    <h2>Parse manually</h2>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:2px">
       <div class="form-group" style="flex:1;min-width:260px">
         <label>Screenshot path</label>
-        <input type="text" id="q-manual-path" placeholder="E:\Claude stuff\OW screenshots\screenshot.png">
+        <input type="text" id="q-manual-path" placeholder="E:\OW screenshots\screenshot.png">
       </div>
-      <button class="btn btn-secondary" id="q-parse-btn">Parse File</button>
+      <button class="btn btn-secondary" id="q-parse-btn" style="align-self:flex-end">Parse</button>
     </div>
     <div id="q-parse-msg" style="margin-top:8px;font-size:13px"></div>
   </div>
   <div id="queue-empty" class="empty" style="display:none">
-    <h3>No matches in queue</h3>
+    <h3>Queue is empty</h3>
     <p>Drop a screenshot in your inbox folder, or use the manual parse above.</p>
   </div>
   <div id="queue-list"></div>
@@ -282,33 +282,33 @@
 
 <!-- SETTINGS -->
 <div class="page" id="page-settings">
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; max-width:900px">
+  <div class="grid-2" style="max-width:900px">
     <div class="card">
       <h2>General</h2>
       <div class="form-group" style="margin-bottom:10px">
-        <label>BattleTag (for OverFast baseline — e.g. Drowzy-11334)</label>
+        <label>BattleTag <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">e.g. Drowzy-11334</span></label>
         <input type="text" id="s-battletag" placeholder="Name-0000">
       </div>
       <div class="form-group" style="margin-bottom:10px">
-        <label>Display Name (for OCR row detection — as shown in-game)</label>
+        <label>Display Name <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">as shown in-game, for OCR</span></label>
         <input type="text" id="s-username" placeholder="DROWZY">
       </div>
       <div class="form-group" style="margin-bottom:14px">
-        <label>Inbox Folder (ShareX saves here)</label>
+        <label>Inbox Folder <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">ShareX destination</span></label>
         <input type="text" id="s-inbox" placeholder="C:\OW-Tracker\inbox">
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-        <button class="btn btn-primary" id="s-save-btn">Save Settings</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="s-save-btn">Save</button>
         <button class="btn btn-secondary" id="s-restart-btn">Save &amp; Restart Watcher</button>
       </div>
-      <div id="s-msg" style="margin-top:8px; font-size:13px;"></div>
+      <div id="s-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
     <div class="card">
       <h2>Tracked Players</h2>
-      <div id="tracked-list" style="margin-bottom:12px"></div>
-      <div style="display:flex; gap:8px; margin-bottom:8px">
-        <input type="text" id="s-player-name" placeholder="In-game name">
-        <input type="text" id="s-player-alias" placeholder="Alias (Luke)">
+      <div id="tracked-list" style="margin-bottom:14px"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+        <div class="form-group"><label>In-game name</label><input type="text" id="s-player-name" placeholder="DROWZY"></div>
+        <div class="form-group"><label>Alias</label><input type="text" id="s-player-alias" placeholder="Luke"></div>
       </div>
       <button class="btn btn-secondary btn-sm" id="s-add-player-btn">+ Add Player</button>
     </div>
@@ -321,9 +321,9 @@
     </div>
     <div class="card">
       <h2>OverFast Baseline</h2>
-      <p style="color:var(--muted); margin-bottom:12px; font-size:13px">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
+      <p style="color:var(--muted);margin-bottom:14px;font-size:13px;line-height:1.6">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
       <button class="btn btn-primary" id="baseline-fetch-btn">Fetch Baseline</button>
-      <div id="baseline-msg" style="margin-top:8px; font-size:13px;"></div>
+      <div id="baseline-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
   </div>
 </div>

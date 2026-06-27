@@ -1288,25 +1288,49 @@ async function loadQueue() {
   if (!data.queue.length) { emptyEl.style.display = 'flex'; listEl.innerHTML = ''; return; }
   emptyEl.style.display = 'none';
   listEl.innerHTML = data.queue.map((item, i) => {
-    const p = item.parsed || {};
-    const tabBadge = p.tab_type ? `<span style="background:var(--accent);color:#000;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:8px">${p.tab_type}</span>` : '';
-    let detailLine = '';
-    if (p.tab_type === 'SUMMARY') {
-      const len = p.game_length_s ? Math.floor(p.game_length_s/60) + ':' + String(p.game_length_s%60).padStart(2,'0') : '?';
-      const dt  = p.played_at ? new Date(p.played_at).toLocaleString() : '?';
-      detailLine = `<p style="margin-bottom:8px;color:var(--muted)">Map: <strong>${p.map||'?'}</strong> &nbsp;|&nbsp; Outcome: <strong class="outcome-${p.outcome}">${p.outcome||'?'}</strong> &nbsp;|&nbsp; Length: ${len} &nbsp;|&nbsp; ${dt}</p>`;
+    const p        = item.parsed || {};
+    const tabType  = p.tab_type || '';
+    const tabClass = tabType.toLowerCase() || 'unknown';
+    const tabBadge = tabType ? `<span class="tab-badge ${tabClass}">${tabType}</span>` : '';
+
+    let detailHtml = '';
+    if (tabType === 'SUMMARY') {
+      const len = p.game_length_s
+        ? Math.floor(p.game_length_s / 60) + ':' + String(p.game_length_s % 60).padStart(2, '0')
+        : '—';
+      const dt  = p.played_at ? new Date(p.played_at).toLocaleString() : '—';
+      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      detailHtml = `<div class="queue-item-detail">
+        <strong>${p.map || '—'}</strong>
+        &nbsp;·&nbsp; <span class="outcome-${p.outcome}">${p.outcome || '—'}</span>
+        &nbsp;·&nbsp; ${len} &nbsp;·&nbsp; ${dt}
+        ${heroes !== '—' ? `<br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>` : ''}
+      </div>`;
+    } else if (tabType === 'TEAM') {
+      const stats = ['elims','assists','deaths','damage','healing','mitigation']
+        .map(k => p[k] != null ? `${k[0].toUpperCase() + k.slice(1, 3)}: <strong>${p[k]}</strong>` : null)
+        .filter(Boolean).join(' &nbsp;·&nbsp; ');
+      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      detailHtml = `<div class="queue-item-detail">
+        ${stats || 'No stats parsed'}
+        <br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>
+      </div>`;
+    } else if (tabType === 'PERSONAL') {
+      const hero = (p.my_heroes || [])[0]?.hero || '—';
+      detailHtml = `<div class="queue-item-detail">Detected hero: <strong>${hero}</strong> · Hero-specific stats not yet parsed.</div>`;
     } else {
-      const statsStr = ['elims','assists','deaths','damage','healing','mitigation']
-        .map(k => p[k] != null ? `${k[0].toUpperCase()+k.slice(1,3)}: ${p[k]}` : null).filter(Boolean).join(' | ');
-      detailLine = `<p style="margin-bottom:4px;color:var(--muted)">${statsStr || 'No stats parsed'}</p>
-        <p style="margin-bottom:8px">Heroes: ${(p.my_heroes||[]).map(h=>h.hero).join(', ')||'—'}</p>`;
+      detailHtml = `<div class="queue-item-detail" style="color:var(--dim)">Could not detect tab type.</div>`;
     }
-    return `<div class="card" style="margin-bottom:12px">
-      <h2 style="display:flex;align-items:center;gap:0">${item.filename}${tabBadge}</h2>
+
+    const warnings = (p.warnings || []).filter(w => !w.startsWith('Map and outcome'));
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="queue-item-header">
+        <span class="queue-item-filename">${item.filename}</span>${tabBadge}
+      </div>
       ${item.error ? `<div class="alert alert-warn">Parse error: ${item.error}</div>` : ''}
-      ${(p.warnings||[]).filter(w => !w.startsWith('Map and outcome')).map(w => `<div class="alert alert-warn">${w}</div>`).join('')}
-      ${detailLine}
-      <div style="display:flex; gap:8px; margin-top:12px">
+      ${warnings.map(w => `<div class="alert alert-warn">${w}</div>`).join('')}
+      ${detailHtml}
+      <div class="queue-item-actions">
         <button class="btn btn-primary btn-sm" onclick="confirmQueueItem(${i})">Confirm &amp; Edit</button>
         <button class="btn btn-danger btn-sm"  onclick="discardQueueItem('${item.filename}', ${i})">Discard</button>
       </div>
@@ -1343,12 +1367,12 @@ function renderTrackedPlayers() {
   const el      = document.getElementById('tracked-list');
   const players = settingsData.tracked_players || [];
   el.innerHTML  = players.map(p =>
-    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-       <span>${p.name}</span>
-       <span style="color:var(--muted)">${p.alias}</span>
+    `<div class="tracked-player-row">
+       <span class="tracked-player-name">${p.name}</span>
+       <span class="tracked-player-alias">${p.alias || ''}</span>
        <button class="btn btn-secondary btn-sm" onclick="removeTrackedPlayer('${p.name}')">✕</button>
      </div>`
-  ).join('') || '<p style="color:var(--muted)">No tracked players yet.</p>';
+  ).join('') || '<p style="color:var(--muted);font-size:13px">No tracked players yet.</p>';
 }
 
 async function saveSettings() {
