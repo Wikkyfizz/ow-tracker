@@ -1,8 +1,10 @@
 """
 OCR utilities for OW2 Game Reports screenshots (1920×1080).
-Handles two screenshot types:
-  - TEAM tab:    player stats (E/A/D/DMG/H/MIT) for all 10 players
-  - SUMMARY tab: map name, outcome, game length, date, game mode, hero played
+Handles three screenshot types:
+  - TEAM tab:     player stats (E/A/D/DMG/H/MIT) for all 10 players
+  - SUMMARY tab:  map name, outcome, game length, date, game mode, heroes played
+                  (new 3-panel layout as of OW2 Season 16+)
+  - PERSONAL tab: hero-specific stats — detection only; full parse is a future feature
 """
 import re
 import pytesseract
@@ -34,15 +36,22 @@ STAT_COLS = {
 NAME_X_START = 150
 NAME_X_END   = 900
 
-# ── SUMMARY tab layout ────────────────────────────────────────────────────────
-
-# Calibrated from bounding-box scan of actual screenshots.
+# ── SUMMARY tab layout (new 3-panel layout, OW2 Season 16+) ──────────────────
+#
+# Layout: [HEROES PLAYED | TOTAL PERFORMANCE | MAP INFO PANEL]
+# The right panel (x≈985–1390) contains:
+#   • Map name header at top
+#   • Map image (~y 175–450)
+#   • DEFEAT / VICTORY / DRAW text (large italic)
+#   • Bullet list: · FINAL SCORE / · DATE / · GAME MODE / · GAME LENGTH
+#
+# Calibrated from 1920×1080 screenshots.
 SUMMARY_REGIONS = {
-    "map_name":    (1270, 183, 1510, 220),   # "NEON JUNCTION"
-    "outcome":     (1270, 590, 1520, 670),   # "DEFEAT" / "VICTORY" / "DRAW"
-    "game_length": (1458, 740, 1545, 800),   # "16:03" — tightened to avoid left-edge icon noise
-    "date_time":   (1370, 695, 1545, 725),   # "06/24/26 - 17:21"
-    "game_mode":   (1448, 728, 1520, 756),   # "HYBRID" — starts after "GAME MODE:" label
+    "map_name":    (985, 143, 1390, 175),   # Right-panel header: "NEON JUNCTION"
+    "outcome":     (985, 453, 1390, 515),   # Large italic text: "DEFEAT" / "VICTORY" / "DRAW"
+    "date_time":   (985, 528, 1390, 558),   # "· DATE: 06/24/26 - 17:21"
+    "game_mode":   (985, 552, 1390, 582),   # "· GAME MODE: HYBRID"
+    "game_length": (985, 576, 1390, 606),   # "· GAME LENGTH: 16:03"
 }
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
@@ -98,16 +107,22 @@ def _ocr_line(img: Image.Image, region: tuple, config: str = "--psm 7 -l eng") -
 # ── Tab type detection ────────────────────────────────────────────────────────
 
 def detect_tab(img: Image.Image) -> str:
-    """Return 'SUMMARY', 'TEAM', or 'UNKNOWN'."""
-    # Check for SUMMARY tab: outcome word appears in right panel
-    region = SUMMARY_REGIONS["outcome"]
-    raw = _ocr_line(img, region).upper()
+    """Return 'SUMMARY', 'TEAM', 'PERSONAL', or 'UNKNOWN'."""
+    # PERSONAL tab: left sidebar shows "XX% / PERCENT PLAYED" in the first hero card
+    raw_personal = _ocr_line(img, (305, 255, 520, 295)).upper()
+    if "PERCENT" in raw_personal or "PLAYED" in raw_personal:
+        return "PERSONAL"
+
+    # SUMMARY tab: DEFEAT/VICTORY/DRAW in the right-panel outcome region
+    raw = _ocr_line(img, SUMMARY_REGIONS["outcome"]).upper()
     if any(w in raw for w in ("VICTORY", "DEFEAT", "DRAW")):
         return "SUMMARY"
-    # Check for TEAM tab: E/A/D column headers appear at y≈216
+
+    # TEAM tab: E/A/D column headers appear at y≈216
     raw_header = _ocr_line(img, (900, 208, 1080, 232)).upper()
     if "E" in raw_header and "A" in raw_header:
         return "TEAM"
+
     return "UNKNOWN"
 
 
@@ -150,8 +165,13 @@ def extract_summary(img: Image.Image, known_maps: list[str]) -> dict:
     if played_at is None:
         warnings.append(f"Could not parse date: '{raw_dt}'")
 
-    # Game mode — strip leading non-alpha noise (e.g. "|" from adjacent UI element)
-    raw_mode = re.sub(r'^[^A-Za-z]+', '', _ocr_line(img, SUMMARY_REGIONS["game_mode"])).strip().title()
+    # Game mode — bullet format "· GAME MODE: HYBRID"; extract value after last colon
+    raw_mode_line = _ocr_line(img, SUMMARY_REGIONS["game_mode"])
+    if ':' in raw_mode_line:
+        raw_mode = raw_mode_line.split(':')[-1]
+    else:
+        raw_mode = raw_mode_line
+    raw_mode = re.sub(r'^[^A-Za-z]+', '', raw_mode).strip().title()
 
     return {
         "map":          map_name,
@@ -254,6 +274,17 @@ def extract_tracked_players(rows: list[dict], tracked: list[str]) -> list[str]:
                 found.append(name)
                 break
     return found
+
+
+# ── PERSONAL tab (stub — full parse is a future feature) ─────────────────────
+
+def extract_personal(img: Image.Image) -> dict:
+    """
+    Detect hero and basic play-time from a PERSONAL tab screenshot.
+    Full hero-specific stat parsing is a future feature; returns a typed stub.
+    """
+    hero_name = _ocr_line(img, (40, 165, 285, 200)).strip().title()
+    return {"hero": hero_name, "warnings": ["PERSONAL tab stats not yet parsed"]}
 
 
 # ── Legacy stubs ──────────────────────────────────────────────────────────────

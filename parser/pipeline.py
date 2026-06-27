@@ -17,6 +17,7 @@ _KNOWN_MAPS = [
     "New Queen Street", "Runasapi", "Throne of Anubis",
     "Hanaoka", "Neon Junction", "Overwatch Headquarters",
     "Ramattra Null Sector", "Timelocked Sanctum",
+    "Aatlis",
 ]
 
 
@@ -35,6 +36,8 @@ def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
         return _parse_summary_tab(img, warnings)
     if tab == "TEAM":
         return _parse_team_tab(path, img, username, tracked_players, warnings)
+    if tab == "PERSONAL":
+        return _parse_personal_tab(img, warnings)
 
     warnings.append("Could not auto-detect screenshot type; attempting TEAM tab parse")
     return _parse_team_tab(path, img, username, tracked_players, warnings)
@@ -52,6 +55,32 @@ def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
         "played_at":     data.get("played_at"),
         "game_mode":     data.get("game_mode", ""),
         "my_heroes":     [],
+        "enemy_heroes":  [],
+        "elims":         None,
+        "deaths":        None,
+        "assists":       None,
+        "damage":        None,
+        "healing":       None,
+        "mitigation":    None,
+        "teammates":     [],
+        "stack_size":    1,
+        "confidence":    0.0,
+        "warnings":      warnings,
+    }
+
+
+def _parse_personal_tab(img: Image.Image, warnings: list) -> dict:
+    from parser.ocr import extract_personal
+    data = extract_personal(img)
+    warnings.extend(data.pop("warnings", []))
+    return {
+        "tab_type":      "PERSONAL",
+        "map":           "",
+        "outcome":       "",
+        "game_length_s": None,
+        "played_at":     None,
+        "game_mode":     "",
+        "my_heroes":     [{"hero": data.get("hero", ""), "pct": 100}] if data.get("hero") else [],
         "enemy_heroes":  [],
         "elims":         None,
         "deaths":        None,
