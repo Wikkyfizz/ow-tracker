@@ -1,65 +1,87 @@
 """
-Hero icon template matching for OW2 Game Reports screenshots.
-Each hero has a reference PNG in parser/hero_icons/{hero_slug}.png.
+Hero portrait matching for OW2 Game Reports screenshots.
+Templates are in-game portrait crops stored in parser/portraits/{my|enemy}/{hero}.png.
+All layout coordinates are resolution-independent (fraction-based via ocr.row_slots).
 """
 import re
 from pathlib import Path
 import numpy as np
 
-ICONS_DIR = Path(__file__).parent / "hero_icons"
+ICONS_DIR     = Path(__file__).parent / "hero_icons"      # legacy reference PNGs (unused for matching)
+PORTRAITS_DIR = Path(__file__).parent / "portraits"        # in-game crop templates
 
-# Hero portrait slots in the TEAMS tab (1920×1080).
-# Portraits are circular crops inside the left side of the table.
-# Row centres match MY_TEAM_ROW_Y / ENEMY_TEAM_ROW_Y in ocr.py (±28 px).
+# Canonical size all portrait crops are resized to before matching.
+# Based on the 1920×1080 portrait region (70×56 px).
+CANONICAL_W, CANONICAL_H = 70, 56
+
+# Legacy slot constants kept for any callers that reference them directly.
+# These now match the calibrated face coordinates in ocr.py.
 MY_TEAM_SLOTS = [
-    (418, 242, 478, 298),
-    (418, 310, 478, 366),
-    (418, 378, 478, 434),
-    (418, 446, 478, 502),
-    (418, 514, 478, 570),
+    (558, 242, 628, 298),
+    (558, 310, 628, 366),
+    (558, 378, 628, 434),
+    (558, 446, 628, 502),
+    (558, 514, 628, 570),
 ]
 ENEMY_TEAM_SLOTS = [
-    (418, 644, 478, 700),
-    (418, 712, 478, 768),
-    (418, 780, 478, 836),
-    (418, 848, 478, 904),
-    (418, 916, 478, 972),
+    (558, 660, 628, 716),
+    (558, 728, 628, 784),
+    (558, 796, 628, 852),
+    (558, 864, 628, 920),
+    (558, 932, 628, 988),
 ]
 
-_template_cache: dict = {}
+_portrait_cache: dict = {"my": {}, "enemy": {}}
 
 
 def _hero_slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "_", name.lower())
 
 
-def _load_templates() -> dict:
-    if _template_cache:
-        return _template_cache
+def _load_portraits() -> dict:
+    """Load in-game portrait templates from parser/portraits/{my|enemy}/{hero}.png."""
+    if _portrait_cache["my"] or _portrait_cache["enemy"]:
+        return _portrait_cache
     try:
         import cv2
-        for path in ICONS_DIR.glob("*.png"):
-            hero_name = path.stem.replace("_", " ").title()
-            tmpl = cv2.imread(str(path), cv2.IMREAD_COLOR)
-            if tmpl is not None:
-                _template_cache[hero_name] = tmpl
+        for team in ("my", "enemy"):
+            team_dir = PORTRAITS_DIR / team
+            if not team_dir.exists():
+                continue
+            for path in team_dir.glob("*.png"):
+                hero = path.stem.replace("_", " ").title()
+                img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+                if img is not None:
+                    # Store already resized to canonical dimensions
+                    _portrait_cache[team][hero] = cv2.resize(
+                        img, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA
+                    ).astype(np.float32)
     except ImportError:
         pass
-    return _template_cache
+    return _portrait_cache
+
+
+def _ccoeff_normed(crop_bgr, tmpl_f32) -> float:
+    """Normalised cross-correlation (TM_CCOEFF_NORMED equivalent, no mask needed)."""
+    c = crop_bgr.astype(np.float32)
+    cc = c - c.mean(); ct = tmpl_f32 - tmpl_f32.mean()
+    num = (cc * ct).sum()
+    den = np.sqrt((cc**2).sum() * (ct**2).sum())
+    return float(num / den) if den > 0 else 0.0
 
 
 def _match_slot(img_bgr, slot: tuple, templates: dict) -> tuple[str, float]:
+    """Extract the portrait crop for a slot and score against all templates."""
     try:
         import cv2
         l, t, r, b = slot
         crop = img_bgr[t:b, l:r]
         if crop.size == 0:
             return "", 0.0
-        best_hero, best_score = "", 0.0
+        crop_r = cv2.resize(crop, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA)
+        best_hero, best_score = "", -1.0
         for hero, tmpl in templates.items():
-            resized = cv2.resize(tmpl, (r - l, b - t))
-            result = cv2.matchTemplate(crop, resized, cv2.TM_CCOEFF_NORMED)
-            score = float(result.max())
+            score = _ccoeff_normed(crop_r, tmpl)
             if score > best_score:
                 best_hero, best_score = hero, score
         return best_hero, best_score
@@ -69,40 +91,44 @@ def _match_slot(img_bgr, slot: tuple, templates: dict) -> tuple[str, float]:
 
 def extract_heroes(img_path: str) -> dict:
     """
-    Returns {"my_heroes": [...hero names...], "enemy_heroes": [...hero names...]}.
-    Falls back to empty lists if opencv unavailable or icons not present.
+    Identify heroes from a TEAMS tab screenshot using in-game portrait templates.
+    Templates must exist in parser/portraits/my/ and parser/portraits/enemy/.
+    Returns {"my_heroes": [...], "enemy_heroes": [...], "confidence": float}.
     """
-    templates = _load_templates()
-    if not templates:
-        return {"my_heroes": [], "enemy_heroes": [], "confidence": 0.0, "warning": "No icon templates found in parser/hero_icons/"}
+    from parser.ocr import row_slots
+    portraits = _load_portraits()
+    if not portraits["my"] and not portraits["enemy"]:
+        return {
+            "my_heroes": [], "enemy_heroes": [], "confidence": 0.0,
+            "warning": f"No portrait templates found in {PORTRAITS_DIR}. Run build_portraits.py to create them.",
+        }
 
     try:
         import cv2
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        if img is None:
+        from PIL import Image
+        img_pil = Image.open(img_path)
+        W, H    = img_pil.size
+        img_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if img_bgr is None:
             return {"my_heroes": [], "enemy_heroes": [], "confidence": 0.0, "warning": f"Could not load image: {img_path}"}
 
-        my_heroes, enemy_heroes = [], []
-        scores = []
+        my_slots, enemy_slots = row_slots(W, H)
+        my_heroes, enemy_heroes, scores = [], [], []
 
-        for slot in MY_TEAM_SLOTS:
-            hero, score = _match_slot(img, slot, templates)
+        for slot in my_slots:
+            hero, score = _match_slot(img_bgr, slot, portraits["my"])
+            my_heroes.append(hero)
             if hero:
-                my_heroes.append(hero)
                 scores.append(score)
 
-        for slot in ENEMY_TEAM_SLOTS:
-            hero, score = _match_slot(img, slot, templates)
+        for slot in enemy_slots:
+            hero, score = _match_slot(img_bgr, slot, portraits["enemy"])
+            enemy_heroes.append(hero)
             if hero:
-                enemy_heroes.append(hero)
                 scores.append(score)
 
         confidence = sum(scores) / len(scores) if scores else 0.0
-        result = {
-            "my_heroes":    my_heroes,
-            "enemy_heroes": enemy_heroes,
-            "confidence":   round(confidence, 2),
-        }
+        result = {"my_heroes": my_heroes, "enemy_heroes": enemy_heroes, "confidence": round(confidence, 2)}
         if confidence < 0.5:
             result["warning"] = f"Hero detection confidence low ({confidence:.0%}) — results may be wrong"
         return result
@@ -110,11 +136,25 @@ def extract_heroes(img_path: str) -> dict:
         return {"my_heroes": [], "enemy_heroes": [], "confidence": 0.0, "warning": str(e)}
 
 
-def download_icons(hero_names: list[str]):
+def extract_portrait_crop(img_path: str, team: str, row: int) -> "np.ndarray | None":
     """
-    Placeholder for downloading hero icons.
-    Run `python -c "from parser.icons import download_icons; download_icons([...])"` to populate.
+    Extract and return the canonical portrait crop (CANONICAL_W×CANONICAL_H BGR)
+    for a given team ('my'/'enemy') and row index (0-4).
+    Used by build_portraits.py to create new templates.
     """
-    print(f"Icon download not yet implemented. Create {ICONS_DIR} and place hero PNGs there.")
-    print("Naming convention: tracer.png, soldier__76.png (spaces→underscore, lowercase)")
-    ICONS_DIR.mkdir(parents=True, exist_ok=True)
+    from parser.ocr import row_slots
+    try:
+        import cv2
+        from PIL import Image
+        img_pil = Image.open(img_path)
+        W, H    = img_pil.size
+        img_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if img_bgr is None:
+            return None
+        my_slots, enemy_slots = row_slots(W, H)
+        slots = my_slots if team == "my" else enemy_slots
+        l, t, r, b = slots[row]
+        crop = img_bgr[t:b, l:r]
+        return cv2.resize(crop, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA)
+    except Exception:
+        return None

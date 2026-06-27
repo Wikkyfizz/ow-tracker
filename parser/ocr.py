@@ -1,5 +1,8 @@
 """
-OCR utilities for OW2 Game Reports screenshots (1920×1080).
+OCR utilities for OW2 Game Reports screenshots.
+All layout constants are stored as fractions of image dimensions (reference: 1920×1080)
+so they work at any resolution. Use px() / layout() to convert to pixels at runtime.
+
 Handles three screenshot types:
   - TEAM tab:     player stats (E/A/D/DMG/H/MIT) for all 10 players
   - SUMMARY tab:  map name, outcome, game length, date, game mode, heroes played
@@ -14,28 +17,54 @@ import numpy as np
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-RANK_TIERS      = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion"]
+RANK_TIERS       = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion"]
 KNOWN_GAME_MODES = ["Control", "Escort", "Hybrid", "Push", "Flashpoint", "Clash"]
 
-# ── TEAM tab layout ───────────────────────────────────────────────────────────
+# ── Resolution-independent layout (fractions of image width / height) ─────────
+# Reference resolution: 1920×1080.  Divide pixel values by W or H accordingly.
 
-MY_TEAM_ROW_Y    = [270, 338, 406, 474, 542]
-ENEMY_TEAM_ROW_Y = [672, 740, 808, 876, 944]
-ROW_HALF_H = 28
+_REF_W, _REF_H = 1920, 1080
 
-# Stat columns (x_left, x_right) — non-overlapping, calibrated from 1920×1080 screenshots.
+# TEAM tab — row y-centres as fraction of image height
+MY_TEAM_ROW_Y_FRAC    = [y / _REF_H for y in [270, 338, 406, 474, 542]]
+ENEMY_TEAM_ROW_Y_FRAC = [y / _REF_H for y in [688, 756, 824, 892, 960]]
+ROW_HALF_H_FRAC       = 28 / _REF_H
+
+# Stat columns (x_left_frac, x_right_frac) — calibrated from 1920×1080.
 # Column order on screen: E (elims), A (assists), D (deaths), DMG, H (healing), MIT.
-STAT_COLS = {
-    "elims":       (912, 962),
-    "assists":     (968, 1012),
-    "deaths":     (1018, 1082),
-    "damage":     (1092, 1200),
-    "healing":    (1204, 1296),
-    "mitigation": (1296, 1430),
+STAT_COLS_FRAC = {
+    "elims":       (912  / _REF_W, 962  / _REF_W),
+    "assists":     (968  / _REF_W, 1012 / _REF_W),
+    "deaths":      (1018 / _REF_W, 1082 / _REF_W),
+    "damage":      (1092 / _REF_W, 1200 / _REF_W),
+    "healing":     (1204 / _REF_W, 1296 / _REF_W),
+    "mitigation":  (1296 / _REF_W, 1430 / _REF_W),
 }
+NAME_X_START_FRAC = 150 / _REF_W
+NAME_X_END_FRAC   = 900 / _REF_W
 
-NAME_X_START = 150
-NAME_X_END   = 900
+# Hero portrait face crop (x only; y uses row centres above)
+PORTRAIT_X_FRAC = (558 / _REF_W, 628 / _REF_W)   # (x1_frac, x2_frac)
+
+def _px(frac, dim):
+    return int(frac * dim)
+
+def row_slots(img_w, img_h):
+    """Return (my_team_rows, enemy_team_rows) as lists of (x1,y1,x2,y2) pixel tuples."""
+    px1 = _px(PORTRAIT_X_FRAC[0], img_w)
+    px2 = _px(PORTRAIT_X_FRAC[1], img_w)
+    half_h = _px(ROW_HALF_H_FRAC, img_h)
+    my_rows    = [(px1, _px(f, img_h) - half_h, px2, _px(f, img_h) + half_h) for f in MY_TEAM_ROW_Y_FRAC]
+    enemy_rows = [(px1, _px(f, img_h) - half_h, px2, _px(f, img_h) + half_h) for f in ENEMY_TEAM_ROW_Y_FRAC]
+    return my_rows, enemy_rows
+
+# Legacy pixel constants kept for callers that haven't migrated yet (1920×1080 assumed)
+MY_TEAM_ROW_Y    = [int(f * _REF_H) for f in MY_TEAM_ROW_Y_FRAC]
+ENEMY_TEAM_ROW_Y = [int(f * _REF_H) for f in ENEMY_TEAM_ROW_Y_FRAC]
+ROW_HALF_H       = int(ROW_HALF_H_FRAC * _REF_H)
+STAT_COLS        = {k: (int(x1 * _REF_W), int(x2 * _REF_W)) for k, (x1, x2) in STAT_COLS_FRAC.items()}
+NAME_X_START     = int(NAME_X_START_FRAC * _REF_W)
+NAME_X_END       = int(NAME_X_END_FRAC   * _REF_W)
 
 # ── SUMMARY tab layout (new 3-panel layout, OW2 Season 16+) ──────────────────
 #
