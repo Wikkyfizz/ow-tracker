@@ -22,6 +22,12 @@ let mModalBans = [];
 let practiceSelection = null;
 let pendingQueueFilename = null;
 
+// Queue hero correction state — keyed by filename; survives queue reloads
+const queueHeroState = {};
+let _pickerCtx = null; // { filename, team, slotIdx }
+const SLOT_ROLES_JS = ['tank', 'dps', 'dps', 'support', 'support'];
+const SLOT_API_ROLE  = { tank: 'Tank', dps: 'Damage', support: 'Support' };
+
 // ── API ───────────────────────────────────────────────────────────────────────
 const api = {
   get:    (url)       => fetch(url).then(r => r.json()),
@@ -686,6 +692,7 @@ async function saveModalGame() {
     msgEl.style.color = 'var(--win)';
 
     if (pendingQueueFilename) {
+      await saveHeroTemplates(pendingQueueFilename);
       await api.delete(`/api/queue/${encodeURIComponent(pendingQueueFilename)}`);
       pendingQueueFilename = null;
       checkQueue();
@@ -1294,27 +1301,29 @@ async function loadQueue() {
     const tabBadge = tabType ? `<span class="tab-badge ${tabClass}">${tabType}</span>` : '';
 
     let detailHtml = '';
+    let teamCompHtml = '';
     if (tabType === 'SUMMARY') {
       const len = p.game_length_s
         ? Math.floor(p.game_length_s / 60) + ':' + String(p.game_length_s % 60).padStart(2, '0')
         : '—';
       const dt  = p.played_at ? new Date(p.played_at).toLocaleString() : '—';
-      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      const heroList = (p.my_heroes || []).map(h => (typeof h === 'string' ? h : h.hero) || '').filter(Boolean).join(', ') || '—';
       detailHtml = `<div class="queue-item-detail">
         <strong>${p.map || '—'}</strong>
         &nbsp;·&nbsp; <span class="outcome-${p.outcome}">${p.outcome || '—'}</span>
         &nbsp;·&nbsp; ${len} &nbsp;·&nbsp; ${dt}
-        ${heroes !== '—' ? `<br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>` : ''}
+        ${heroList !== '—' ? `<br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroList}</span>` : ''}
       </div>`;
     } else if (tabType === 'TEAM') {
       const stats = ['elims','assists','deaths','damage','healing','mitigation']
         .map(k => p[k] != null ? `${k[0].toUpperCase() + k.slice(1, 3)}: <strong>${p[k]}</strong>` : null)
         .filter(Boolean).join(' &nbsp;·&nbsp; ');
-      const heroes = (p.my_heroes || []).map(h => h.hero).join(', ') || '—';
+      const heroList = (p.my_heroes || []).map(h => (typeof h === 'string' ? h : h.hero) || '').filter(Boolean).join(', ') || '—';
       detailHtml = `<div class="queue-item-detail">
         ${stats || 'No stats parsed'}
-        <br><span style="font-size:12px;color:var(--dim)">Heroes: ${heroes}</span>
+        <br><span style="font-size:12px;color:var(--dim)">My heroes: ${heroList}</span>
       </div>`;
+      teamCompHtml = renderTeamCompPanel(item);
     } else if (tabType === 'PERSONAL') {
       const hero = (p.my_heroes || [])[0]?.hero || '—';
       detailHtml = `<div class="queue-item-detail">Detected hero: <strong>${hero}</strong> · Hero-specific stats not yet parsed.</div>`;
@@ -1330,6 +1339,7 @@ async function loadQueue() {
       ${item.error ? `<div class="alert alert-warn">Parse error: ${item.error}</div>` : ''}
       ${warnings.map(w => `<div class="alert alert-warn">${w}</div>`).join('')}
       ${detailHtml}
+      ${teamCompHtml}
       <div class="queue-item-actions">
         <button class="btn btn-primary btn-sm" onclick="confirmQueueItem(${i})">Confirm &amp; Edit</button>
         <button class="btn btn-danger btn-sm"  onclick="discardQueueItem('${item.filename}', ${i})">Discard</button>
@@ -1343,7 +1353,164 @@ async function confirmQueueItem(idx) {
   const item = data.queue[idx];
   if (!item) return;
   const p = { ...(item.parsed || {}), _queueFilename: item.filename };
+
+  // Apply any hero corrections from the team comp panel
+  const state = queueHeroState[item.filename];
+  const toModalHero = h => {
+    const name = typeof h === 'string' ? h : h.hero;
+    return (name && !name.startsWith('Unknown')) ? { hero: name, pct: 100 } : null;
+  };
+  if (state) {
+    p.my_heroes    = state.my.map(s => toModalHero(s)).filter(Boolean);
+    p.enemy_heroes = state.enemy.map(s => toModalHero(s)).filter(Boolean);
+  } else {
+    p.my_heroes    = (p.my_heroes    || []).map(toModalHero).filter(Boolean);
+    p.enemy_heroes = (p.enemy_heroes || []).map(toModalHero).filter(Boolean);
+  }
+
   openGameModal(p, false);
+}
+
+// ── Queue: hero state + team comp panel ──────────────────────────────────────
+
+function initHeroState(item) {
+  const fn = item.filename;
+  if (queueHeroState[fn]) return;
+  const p = item.parsed || {};
+  const toSlot = h => ({
+    hero:       typeof h === 'string' ? h : (h.hero || ''),
+    confidence: (typeof h === 'object' && h.confidence != null) ? h.confidence : 1.0,
+    role:       (typeof h === 'object' ? h.role : '') || '',
+    corrected:  false,
+  });
+  queueHeroState[fn] = {
+    my:    (p.my_heroes    || []).map(toSlot),
+    enemy: (p.enemy_heroes || []).map(toSlot),
+  };
+}
+
+function renderTeamCompPanel(item) {
+  initHeroState(item);
+  const fn    = item.filename;
+  const state = queueHeroState[fn];
+
+  const renderSlots = (team) => {
+    const slots = state[team] || [];
+    if (!slots.length) {
+      return Array.from({length: 5}, () =>
+        `<div class="hero-slot" style="opacity:.25">
+           <div class="hero-slot-img" style="background:var(--surface)"></div>
+           <div class="hero-slot-name">—</div>
+         </div>`
+      ).join('');
+    }
+    return slots.map((s, i) => {
+      const isUnknown   = !s.hero || s.hero.startsWith('Unknown');
+      const isUncertain = isUnknown || s.confidence < 0.75;
+      const cls = s.corrected ? 'corrected' : (isUncertain ? 'uncertain' : '');
+      const label = isUnknown ? '?' : (s.hero.length > 10 ? s.hero.slice(0, 9) + '…' : s.hero);
+      const fn_safe = fn.replace(/'/g, "\\'");
+      return `<div class="hero-slot ${cls}" data-slot="${fn}-${team}-${i}"
+                   onclick="openHeroPicker('${fn_safe}','${team}',${i})">
+        <img class="hero-slot-img"
+             src="/api/queue/${encodeURIComponent(fn)}/portrait/${team}/${i}"
+             loading="lazy" onerror="this.style.opacity='.15'">
+        <div class="hero-slot-name">${label}</div>
+      </div>`;
+    }).join('');
+  };
+
+  return `<div class="team-comp-panel">
+    <div class="team-comp-panel-label">Team Comp — click portrait to correct</div>
+    <div class="team-comp-row">
+      <span class="team-comp-side">My</span>
+      <div class="hero-slots">${renderSlots('my')}</div>
+    </div>
+    <div class="team-comp-row">
+      <span class="team-comp-side">Enemy</span>
+      <div class="hero-slots">${renderSlots('enemy')}</div>
+    </div>
+  </div>`;
+}
+
+// ── Hero picker ───────────────────────────────────────────────────────────────
+
+function openHeroPicker(filename, team, slotIdx) {
+  _pickerCtx = { filename, team, slotIdx };
+  const slotRole = SLOT_ROLES_JS[slotIdx];
+  const apiRole  = SLOT_API_ROLE[slotRole] || 'All';
+  document.getElementById('hero-picker-role-label').textContent = apiRole + ' slot ' + (slotIdx + 1);
+  const filterEl = document.getElementById('hero-picker-filter');
+  filterEl.value = '';
+  _renderPickerGrid('');
+  document.getElementById('hero-picker-overlay').style.display = 'flex';
+  filterEl.focus();
+}
+
+function _renderPickerGrid(filter) {
+  if (!_pickerCtx) return;
+  const { filename, team, slotIdx } = _pickerCtx;
+  const slotRole  = SLOT_ROLES_JS[slotIdx];
+  const apiRole   = SLOT_API_ROLE[slotRole];
+  const state     = queueHeroState[filename];
+  const current   = state ? (state[team][slotIdx]?.hero || '') : '';
+  const pool      = apiRole ? heroes.filter(h => h.role === apiRole) : heroes;
+  const filtered  = filter ? pool.filter(h => h.name.toLowerCase().includes(filter.toLowerCase())) : pool;
+  const grid      = document.getElementById('hero-picker-grid');
+  grid.innerHTML  = filtered.map(h =>
+    `<button class="hero-picker-item ${h.name === current ? 'active' : ''}"
+             onclick="selectHeroForSlot('${h.name.replace(/'/g, "\\'")}')">${h.name}</button>`
+  ).join('') || '<span style="color:var(--dim);font-size:13px;padding:4px">No heroes match</span>';
+}
+
+function filterHeroPicker(val) { _renderPickerGrid(val); }
+
+function closeHeroPicker() {
+  document.getElementById('hero-picker-overlay').style.display = 'none';
+  _pickerCtx = null;
+}
+
+function heroPickerOverlayClick(event) {
+  if (event.target === document.getElementById('hero-picker-overlay')) closeHeroPicker();
+}
+
+function selectHeroForSlot(heroName) {
+  if (!_pickerCtx) return;
+  const { filename, team, slotIdx } = _pickerCtx;
+  const state = queueHeroState[filename];
+  if (!state) return;
+  const slot = state[team][slotIdx];
+  if (!slot) return;
+  slot.hero      = heroName;
+  slot.corrected = true;
+
+  // Update slot DOM without re-rendering the whole queue
+  const slotEl = document.querySelector(`[data-slot="${filename}-${team}-${slotIdx}"]`);
+  if (slotEl) {
+    slotEl.classList.remove('uncertain');
+    slotEl.classList.add('corrected');
+    const nameEl = slotEl.querySelector('.hero-slot-name');
+    if (nameEl) nameEl.textContent = heroName.length > 10 ? heroName.slice(0, 9) + '…' : heroName;
+  }
+  closeHeroPicker();
+}
+
+async function saveHeroTemplates(filename) {
+  if (!filename || !queueHeroState[filename]) return;
+  const state = queueHeroState[filename];
+  const saves = [];
+  for (const team of ['my', 'enemy']) {
+    (state[team] || []).forEach((slot, row) => {
+      if (slot.corrected && slot.hero && !slot.hero.startsWith('Unknown')) {
+        saves.push(
+          api.post('/api/heroes/template', { filename, team, row, hero: slot.hero })
+             .catch(() => null)
+        );
+      }
+    });
+  }
+  if (saves.length) await Promise.all(saves);
+  delete queueHeroState[filename];
 }
 
 async function discardQueueItem(filename) {

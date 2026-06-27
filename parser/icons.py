@@ -82,6 +82,10 @@ ENEMY_TEAM_SLOTS = [
     (558, 932, 628, 988),
 ]
 
+CONFIDENCE_THRESHOLD = 0.65  # below this → slot shows "Unknown [Role]" instead of a wrong guess
+
+_UNKNOWN_LABEL = {"tank": "Unknown [Tank]", "dps": "Unknown [DPS]", "support": "Unknown [Support]"}
+
 _portrait_cache: dict = {"my": {}, "enemy": {}}
 
 
@@ -175,16 +179,18 @@ def extract_heroes(img_path: str) -> dict:
         my_heroes, enemy_heroes, scores = [], [], []
 
         for i, slot in enumerate(my_slots):
-            hero, score = _match_slot(img_bgr, slot, portraits["my"], SLOT_ROLES[i])
-            my_heroes.append(hero)
-            if hero:
-                scores.append(score)
+            role = SLOT_ROLES[i]
+            hero, score = _match_slot(img_bgr, slot, portraits["my"], role)
+            display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
+            my_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})
+            scores.append(score)
 
         for i, slot in enumerate(enemy_slots):
-            hero, score = _match_slot(img_bgr, slot, portraits["enemy"], SLOT_ROLES[i])
-            enemy_heroes.append(hero)
-            if hero:
-                scores.append(score)
+            role = SLOT_ROLES[i]
+            hero, score = _match_slot(img_bgr, slot, portraits["enemy"], role)
+            display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
+            enemy_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})
+            scores.append(score)
 
         confidence = sum(scores) / len(scores) if scores else 0.0
         result = {"my_heroes": my_heroes, "enemy_heroes": enemy_heroes, "confidence": round(confidence, 2)}

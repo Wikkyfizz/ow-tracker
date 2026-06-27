@@ -440,6 +440,19 @@
   </div>
 </div>
 
+<!-- Hero picker overlay — shared, role-filtered, repositioned on each use -->
+<div id="hero-picker-overlay" style="display:none" onclick="heroPickerOverlayClick(event)">
+  <div class="hero-picker-panel">
+    <div class="hero-picker-head">
+      <span id="hero-picker-role-label" class="hero-picker-role-label"></span>
+      <button class="icon-btn" onclick="closeHeroPicker()">✕</button>
+    </div>
+    <input type="text" id="hero-picker-filter" class="hero-picker-filter"
+           placeholder="Filter heroes…" oninput="filterHeroPicker(this.value)">
+    <div id="hero-picker-grid" class="hero-picker-grid"></div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

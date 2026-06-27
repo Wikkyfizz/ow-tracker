@@ -115,8 +115,16 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     if hero_warning:
         warnings.append(hero_warning)
 
-    my_heroes    = [{"hero": h, "row": i} for i, h in enumerate(icon_result.get("my_heroes",    []))]
-    enemy_heroes = [{"hero": h, "row": i} for i, h in enumerate(icon_result.get("enemy_heroes", []))]
+    raw_my    = icon_result.get("my_heroes",    [])
+    raw_enemy = icon_result.get("enemy_heroes", [])
+    my_heroes = [
+        {"hero": h["hero"], "confidence": h.get("confidence", 1.0), "role": h.get("role", ""), "row": i}
+        for i, h in enumerate(raw_my)
+    ]
+    enemy_heroes = [
+        {"hero": h["hero"], "confidence": h.get("confidence", 1.0), "role": h.get("role", ""), "row": i}
+        for i, h in enumerate(raw_enemy)
+    ]
     confidence   = icon_result.get("confidence", 0.0)
 
     warnings.append("Map and outcome not on TEAM tab — confirm after parsing SUMMARY tab screenshot")

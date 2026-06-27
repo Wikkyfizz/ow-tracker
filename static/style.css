@@ -815,3 +815,93 @@ select option { background: var(--surface); }
 .sess-hist-card.expanded .sess-hist-body { display: block; }
 .sess-spine-row { display: flex; align-items: center; gap: 12px; padding: 12px 0 16px; }
 .sess-matches { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Team comp panel (queue card) ─────────────────────────────────────────── */
+.team-comp-panel {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.team-comp-panel-label {
+  font-size: 9px; font-weight: 700; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .08em;
+  margin-bottom: 8px;
+}
+.team-comp-row {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin-bottom: 6px;
+}
+.team-comp-row:last-child { margin-bottom: 0; }
+.team-comp-side {
+  font-size: 8px; font-weight: 700; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .06em;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  white-space: nowrap; align-self: center; flex-shrink: 0;
+}
+.hero-slots { display: flex; gap: 5px; flex: 1; }
+.hero-slot {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; padding: 4px 3px; border-radius: 6px;
+  border: 2px solid transparent; background: var(--card);
+  transition: border-color .12s, background .12s;
+  flex: 1; min-width: 0;
+}
+.hero-slot:hover { border-color: var(--dim); background: var(--card-hi); }
+.hero-slot.uncertain { border-color: #d97706; }
+.hero-slot.corrected { border-color: var(--win); }
+.hero-slot-img {
+  width: 100%; aspect-ratio: 5/4;
+  object-fit: cover; border-radius: 3px; display: block;
+  background: var(--surface);
+}
+.hero-slot-name {
+  font-size: 8px; color: var(--dim); text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+  line-height: 1.2;
+}
+.hero-slot.uncertain .hero-slot-name { color: #d97706; }
+.hero-slot.corrected .hero-slot-name { color: var(--win); }
+
+/* ── Hero picker overlay ───────────────────────────────────────────────────── */
+#hero-picker-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.hero-picker-panel {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px;
+  width: 380px; max-width: 92vw; max-height: 72vh;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.hero-picker-head {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hero-picker-role-label {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.hero-picker-filter {
+  width: 100%; box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 5px; padding: 6px 10px;
+  color: var(--text); font-size: 13px;
+}
+.hero-picker-filter:focus { outline: none; border-color: var(--accent); }
+.hero-picker-grid {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  overflow-y: auto; flex: 1;
+}
+.hero-picker-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 10px;
+  font-size: 12px; color: var(--text); cursor: pointer;
+  transition: border-color .1s, background .1s;
+  white-space: nowrap;
+}
+.hero-picker-item:hover { background: var(--card-hi); border-color: var(--dim); }
+.hero-picker-item.active { border-color: var(--accent); color: var(--accent); }

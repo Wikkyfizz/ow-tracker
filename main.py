@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 import db
 import analytics
@@ -316,6 +316,68 @@ def parse_file_manual(body: dict):
     queue_remove(Path(path).name)
     _handle_new_screenshot(path)
     return {"ok": True}
+
+
+@app.get("/api/queue/{filename}/portrait/{team}/{row}")
+def get_portrait_crop(filename: str, team: str, row: int):
+    if team not in ("my", "enemy"):
+        raise HTTPException(400, "team must be 'my' or 'enemy'")
+    item = next((i for i in load_queue() if i["filename"] == filename), None)
+    if not item:
+        raise HTTPException(404, "Not in queue")
+    path = item.get("path", "")
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "Screenshot not found")
+    try:
+        import cv2
+        from parser.icons import extract_portrait_crop
+        crop = extract_portrait_crop(path, team, row)
+        if crop is None:
+            raise HTTPException(500, "Could not extract portrait")
+        scaled = cv2.resize(crop, (140, 112), interpolation=cv2.INTER_LANCZOS4)
+        _, buf = cv2.imencode(".png", scaled)
+        return Response(content=buf.tobytes(), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=3600"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/heroes/template")
+def save_hero_template(body: dict):
+    import re as _re
+    filename = body.get("filename", "")
+    team = body.get("team", "")
+    row = body.get("row")
+    hero = body.get("hero", "")
+    if not filename or team not in ("my", "enemy") or row is None or not hero:
+        raise HTTPException(400, "filename, team (my/enemy), row, hero are all required")
+    if hero.startswith("Unknown"):
+        raise HTTPException(400, "Cannot save template for an unknown hero")
+    item = next((i for i in load_queue() if i["filename"] == filename), None)
+    if not item:
+        raise HTTPException(404, "Not in queue")
+    path = item.get("path", "")
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "Screenshot not found")
+    try:
+        import cv2
+        from parser.icons import extract_portrait_crop, _portrait_cache, PORTRAITS_DIR
+        crop = extract_portrait_crop(path, team, row)
+        if crop is None:
+            raise HTTPException(500, "Could not extract portrait crop")
+        slug = _re.sub(r"[^a-z0-9]", "_", hero.lower()).strip("_")
+        dest = PORTRAITS_DIR / team / f"{slug}.png"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(dest), crop)
+        _portrait_cache["my"].clear()
+        _portrait_cache["enemy"].clear()
+        return {"saved": True, "path": str(dest), "hero": hero, "slug": slug}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @app.post("/api/watcher/restart")
