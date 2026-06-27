@@ -13,8 +13,9 @@
   <h1><span class="ow">OW</span> Tracker</h1>
   <button class="nav-btn active" data-page="dashboard">Dashboard</button>
   <button class="nav-btn session-nav-btn" id="session-nav-btn" data-page="session">
-    <span id="sess-nav-text">Start Session</span>
+    <span id="sess-nav-text">Live Session</span>
   </button>
+  <button class="nav-btn" data-page="sessions">Sessions</button>
   <button class="nav-btn" data-page="queue">Queue <span id="queue-badge" class="badge" style="display:none">0</span></button>
   <button class="nav-btn" data-page="history">History</button>
   <button class="nav-btn" data-page="analytics">Analytics</button>
@@ -28,34 +29,55 @@
 
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
+
+  <!-- Stat strip -->
   <div class="dash-grid" id="stat-cards">
     <div class="stat-card"><div class="label">Total Games</div><div class="value" id="d-total">—</div></div>
     <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="d-wr">—</div><div class="sub" id="d-wr-sub"></div></div>
     <div class="stat-card"><div class="label">Last 20</div><div class="value" id="d-wr20">—</div></div>
     <div class="stat-card"><div class="label">Streak</div><div class="value" id="d-streak">—</div></div>
-    <div class="stat-card"><div class="label">Best Hero</div><div class="value" id="d-hero" style="font-size:18px">—</div></div>
-    <div class="stat-card"><div class="label">Best Map</div><div class="value" id="d-map" style="font-size:18px">—</div></div>
+    <div class="stat-card"><div class="label">Best Hero</div><div class="value" id="d-hero" style="font-size:20px">—</div></div>
+    <div class="stat-card"><div class="label">Best Map</div><div class="value" id="d-map" style="font-size:20px">—</div></div>
   </div>
-  <div class="grid-2">
+
+  <!-- Band 1: Recent Sessions -->
+  <div class="dash-band">
+    <div class="section-label">Recent Sessions</div>
+    <div class="dash-sess-row" id="dash-recent-sessions">
+      <div class="loading" style="padding:16px 0;color:var(--dim)">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Band 2: Recent Form -->
+  <div class="grid-2" style="margin-top:14px">
     <div class="card accent-tank">
       <h2>SR Timeline</h2>
       <div class="chart-wrap"><canvas id="sr-chart"></canvas></div>
     </div>
+    <div class="card">
+      <h2>Are you improving?</h2>
+      <div id="dash-improving"><div class="loading" style="color:var(--dim)">—</div></div>
+    </div>
+  </div>
+
+  <!-- Band 3: Lifetime context (demoted) -->
+  <div class="grid-2" style="margin-top:14px">
     <div class="card accent-dps">
       <h2>Win Rate by Map (top 8)</h2>
       <div class="chart-wrap"><canvas id="map-chart"></canvas></div>
-    </div>
-  </div>
-  <div class="grid-2" style="margin-top:14px">
-    <div class="card">
-      <h2>Baseline — Competitive (OverFast)</h2>
-      <div id="baseline-table"><div class="loading">No baseline data — go to Settings → Fetch Baseline.</div></div>
     </div>
     <div class="card">
       <h2>Tracked Win Rates (weighted)</h2>
       <div id="hero-wr-table" class="table-wrap"><div class="loading">No matches logged yet.</div></div>
     </div>
   </div>
+  <div style="margin-top:14px">
+    <div class="card">
+      <h2>Baseline — Competitive (OverFast)</h2>
+      <div id="baseline-table"><div class="loading">No baseline data — go to Settings → Fetch Baseline.</div></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- SESSION -->
@@ -65,7 +87,7 @@
   <div id="sess-idle">
     <div class="session-start-wrap">
       <div class="card session-start-card">
-        <h2>Session</h2>
+        <h2>Live Session</h2>
         <div class="form-group" style="margin-bottom:14px">
           <label>Goal (optional)</label>
           <textarea id="s-goal" rows="2" placeholder="What are you working on? e.g. 'Practice Winston dive timing'"></textarea>
@@ -78,7 +100,7 @@
       </div>
     </div>
     <div style="max-width:760px; margin:24px auto 0">
-      <div class="section-label">Recent Sessions</div>
+      <div class="section-label">Past Sessions</div>
       <div id="recent-sessions"><div class="loading" style="padding:20px 0">No sessions yet.</div></div>
     </div>
   </div>
@@ -146,21 +168,26 @@
   </div>
 </div>
 
+<!-- SESSIONS (review) -->
+<div class="page" id="page-sessions">
+  <div class="sessions-list" id="sessions-list"></div>
+</div>
+
 <!-- QUEUE -->
 <div class="page" id="page-queue">
-  <div class="card" style="margin-bottom:16px">
-    <h2>Parse a screenshot manually</h2>
-    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+  <div class="card" style="margin-bottom:14px">
+    <h2>Parse manually</h2>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:2px">
       <div class="form-group" style="flex:1;min-width:260px">
         <label>Screenshot path</label>
-        <input type="text" id="q-manual-path" placeholder="E:\Claude stuff\OW screenshots\screenshot.png">
+        <input type="text" id="q-manual-path" placeholder="E:\OW screenshots\screenshot.png">
       </div>
-      <button class="btn btn-secondary" id="q-parse-btn">Parse File</button>
+      <button class="btn btn-secondary" id="q-parse-btn" style="align-self:flex-end">Parse</button>
     </div>
     <div id="q-parse-msg" style="margin-top:8px;font-size:13px"></div>
   </div>
   <div id="queue-empty" class="empty" style="display:none">
-    <h3>No matches in queue</h3>
+    <h3>Queue is empty</h3>
     <p>Drop a screenshot in your inbox folder, or use the manual parse above.</p>
   </div>
   <div id="queue-list"></div>
@@ -178,15 +205,7 @@
     <div class="form-group"><label>Hero</label><select id="h-hero-filter"><option value="">All Heroes</option></select></div>
     <button class="btn btn-secondary btn-sm" id="h-filter-btn" style="align-self:flex-end">Filter</button>
   </div>
-  <div class="card table-wrap">
-    <table id="history-table">
-      <thead><tr>
-        <th>#</th><th>Date</th><th>Map</th><th>Outcome</th><th>My Heroes</th>
-        <th>Enemy Comp</th><th>E</th><th>D</th><th>DMG</th><th>Rank</th><th>Stack</th><th></th>
-      </tr></thead>
-      <tbody id="history-body"></tbody>
-    </table>
-  </div>
+  <div id="history-list"></div>
 </div>
 
 <!-- ANALYTICS -->
@@ -201,86 +220,95 @@
     <button class="tab-btn" data-tab="a-stack">Stack Size</button>
   </div>
   <div class="tab-panel active" id="a-heroes">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Hero</th><th>Win Rate</th><th>Weighted Games</th><th></th></tr></thead>
-      <tbody id="t-hero-wr"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Are you a one-trick?</div>
+      <div class="question-answer" id="a-heroes-conc-ans"></div>
+      <div class="a-list" id="a-heroes-conc-body"></div>
+    </div>
+    <div class="question-section">
+      <div class="question-header">Who do you win with?</div>
+      <div class="question-answer" id="a-heroes-wr-ans"></div>
+      <div class="a-list" id="a-heroes-wr-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-maps">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Map</th><th>Mode</th><th>Comp Affinity</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
-      <tbody id="t-map-wr"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Where do you win most?</div>
+      <div class="question-answer" id="a-maps-ans"></div>
+      <div class="a-list" id="a-maps-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-comp">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>My Comp</th><th>vs Enemy Comp</th><th>Win Rate</th><th>Games</th></tr></thead>
-      <tbody id="t-comp-mu"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Which comps beat you?</div>
+      <div class="question-answer" id="a-comp-ans"></div>
+      <div class="a-list" id="a-comp-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-enemy">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-      <div class="card table-wrap">
-        <h2>Win Rate vs Enemy Hero</h2>
-        <table><thead><tr><th>Enemy Hero</th><th>Win Rate</th><th>Games</th></tr></thead>
-        <tbody id="t-vs-hero"></tbody></table>
-      </div>
-      <div class="card table-wrap">
-        <h2>Hero × Map Win Rates</h2>
-        <table><thead><tr><th>Hero</th><th>Map</th><th>Affinity</th><th>Win Rate</th><th>W.Games</th></tr></thead>
-        <tbody id="t-hero-map"></tbody></table>
-      </div>
+    <div class="question-section">
+      <div class="question-header">Who's your nemesis?</div>
+      <div class="question-answer" id="a-enemy-ans"></div>
+      <div class="a-list" id="a-enemy-body"></div>
+    </div>
+    <div class="question-section">
+      <div class="question-header">Which heroes work on which maps?</div>
+      <div class="question-answer" id="a-heromap-ans"></div>
+      <div class="a-list" id="a-heromap-body"></div>
     </div>
   </div>
   <div class="tab-panel" id="a-teammates">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Player</th><th>Alias</th><th>Win Rate</th><th>Games</th></tr></thead>
-      <tbody id="t-teammates"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Who raises your win rate?</div>
+      <div class="question-answer" id="a-teammates-ans"></div>
+      <div class="a-list" id="a-teammates-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-bans">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Hero</th><th>Times Banned</th><th>Ban Rate</th><th>Win Rate When Banned</th></tr></thead>
-      <tbody id="t-bans"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">What are they taking off the table?</div>
+      <div class="question-answer" id="a-bans-ans"></div>
+      <div class="a-list" id="a-bans-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-stack">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Stack Size</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
-      <tbody id="t-stack"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Does playing with friends help?</div>
+      <div class="question-answer" id="a-stack-ans"></div>
+      <div class="a-list" id="a-stack-body"></div>
+    </div>
   </div>
 </div>
 
 <!-- SETTINGS -->
 <div class="page" id="page-settings">
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; max-width:900px">
+  <div class="grid-2" style="max-width:900px">
     <div class="card">
       <h2>General</h2>
       <div class="form-group" style="margin-bottom:10px">
-        <label>BattleTag (for OverFast baseline — e.g. Drowzy-11334)</label>
+        <label>BattleTag <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">e.g. Drowzy-11334</span></label>
         <input type="text" id="s-battletag" placeholder="Name-0000">
       </div>
       <div class="form-group" style="margin-bottom:10px">
-        <label>Display Name (for OCR row detection — as shown in-game)</label>
+        <label>Display Name <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">as shown in-game, for OCR</span></label>
         <input type="text" id="s-username" placeholder="DROWZY">
       </div>
       <div class="form-group" style="margin-bottom:14px">
-        <label>Inbox Folder (ShareX saves here)</label>
+        <label>Inbox Folder <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">ShareX destination</span></label>
         <input type="text" id="s-inbox" placeholder="C:\OW-Tracker\inbox">
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-        <button class="btn btn-primary" id="s-save-btn">Save Settings</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="s-save-btn">Save</button>
         <button class="btn btn-secondary" id="s-restart-btn">Save &amp; Restart Watcher</button>
       </div>
-      <div id="s-msg" style="margin-top:8px; font-size:13px;"></div>
+      <div id="s-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
     <div class="card">
       <h2>Tracked Players</h2>
-      <div id="tracked-list" style="margin-bottom:12px"></div>
-      <div style="display:flex; gap:8px; margin-bottom:8px">
-        <input type="text" id="s-player-name" placeholder="In-game name">
-        <input type="text" id="s-player-alias" placeholder="Alias (Luke)">
+      <div id="tracked-list" style="margin-bottom:14px"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+        <div class="form-group"><label>In-game name</label><input type="text" id="s-player-name" placeholder="DROWZY"></div>
+        <div class="form-group"><label>Alias</label><input type="text" id="s-player-alias" placeholder="Luke"></div>
       </div>
       <button class="btn btn-secondary btn-sm" id="s-add-player-btn">+ Add Player</button>
     </div>
@@ -293,9 +321,9 @@
     </div>
     <div class="card">
       <h2>OverFast Baseline</h2>
-      <p style="color:var(--muted); margin-bottom:12px; font-size:13px">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
+      <p style="color:var(--muted);margin-bottom:14px;font-size:13px;line-height:1.6">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
       <button class="btn btn-primary" id="baseline-fetch-btn">Fetch Baseline</button>
-      <div id="baseline-msg" style="margin-top:8px; font-size:13px;"></div>
+      <div id="baseline-msg" style="margin-top:10px;font-size:13px"></div>
     </div>
   </div>
 </div>
