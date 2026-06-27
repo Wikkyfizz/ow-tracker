@@ -747,3 +747,36 @@ select option { background: var(--surface); }
   font-size: 11px; color: var(--dim);
   flex-shrink: 0; width: 28px; text-align: right;
 }
+
+/* ── Sessions history page ───────────────────────────────────────────────── */
+.sessions-list { display: flex; flex-direction: column; gap: 8px; }
+.sess-hist-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 3px solid var(--dim);
+  border-radius: 8px; overflow: hidden;
+  transition: border-left-color .15s;
+}
+.sess-hist-card:hover { border-left-color: var(--accent); }
+.sess-hist-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; cursor: pointer;
+  transition: background .15s;
+}
+.sess-hist-header:hover { background: var(--card-hi); }
+.sess-hist-title {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.sess-hist-wl { font-family: var(--font-m); font-size: 13px; flex-shrink: 0; white-space: nowrap; }
+.sess-hist-wr { font-family: var(--font-m); font-size: 13px; flex-shrink: 0; }
+.sess-hist-meta { font-size: 11px; color: var(--dim); flex-shrink: 0; white-space: nowrap; }
+.sess-hist-chevron { color: var(--dim); font-size: 11px; flex-shrink: 0; transition: transform .2s; }
+.sess-hist-card.expanded .sess-hist-chevron { transform: rotate(180deg); }
+.sess-hist-body {
+  display: none;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.sess-hist-card.expanded .sess-hist-body { display: block; }
+.sess-spine-row { display: flex; align-items: center; gap: 12px; padding: 12px 0 16px; }
+.sess-matches { display: flex; flex-direction: column; gap: 6px; }

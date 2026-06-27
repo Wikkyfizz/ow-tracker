@@ -11,6 +11,9 @@ let activeSession = null;
 let sessionTimerInterval = null;
 let sessionMatches = [];
 
+// Sessions page state
+let pendingSessionExpand = null;
+
 // Modal state
 let modalIsHistorical = false;
 let mModalMyHeroes = [];
@@ -47,6 +50,7 @@ function onPageEnter(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'history')   loadHistory();
   if (page === 'analytics') loadAnalyticsTab('a-heroes');
+  if (page === 'sessions')  loadSessionsPage();
   if (page === 'queue')     loadQueue();
   if (page === 'settings')  loadSettings();
   if (page === 'session')   loadSessionPage();
@@ -209,7 +213,7 @@ function updateSessionNavBtn() {
     textEl.textContent = '⏺ ' + formatDuration(elapsed);
   } else {
     btn.classList.remove('live');
-    textEl.textContent = 'Start Session';
+    textEl.textContent = 'Live Session';
   }
 }
 
@@ -299,24 +303,12 @@ function renderSessionGames() {
   const list = document.getElementById('sess-games-list');
   if (!sessionMatches.length) {
     list.innerHTML = '<p style="color:var(--muted);padding:12px 0">No games yet.</p>';
-    document.getElementById('ss-game-count');
     return;
   }
-  list.innerHTML = [...sessionMatches].reverse().map(m => {
-    const myH   = JSON.parse(m.my_heroes || '[]');
-    const heroStr = myH.map(h => h.hero + (myH.length > 1 ? ' ' + h.pct + '%' : '')).join(', ') || '—';
-    const pracDotClass = { Y: 'practiced-y', 'Sort of': 'practiced-so', N: 'practiced-n' }[m.practiced] || 'practiced-none';
-    const pracTitle    = m.practiced ? `Practiced: ${m.practiced}` : 'Practice not logged';
-    const statsStr     = [m.elims != null ? `${m.elims}E` : null, m.deaths != null ? `${m.deaths}D` : null, m.damage != null ? numFmt(m.damage) + ' DMG' : null].filter(Boolean).join(' · ') || '';
-    return `<div class="sess-game-row">
-      <span class="outcome-${m.outcome}" style="width:44px;flex-shrink:0">${m.outcome}</span>
-      <span class="sess-game-map">${m.map}</span>
-      <span class="sess-game-heroes">${heroStr}</span>
-      <span class="sess-game-stats">${statsStr}</span>
-      <span class="practiced-dot ${pracDotClass}" title="${pracTitle}"></span>
-      <button class="btn btn-secondary btn-sm" onclick="openEditMatch(${m.id})">Edit</button>
-    </div>`;
-  }).join('');
+  list.innerHTML = [...sessionMatches].reverse().map(m => renderMatchCard(m)).join('');
+  list.querySelectorAll('.match-card-header').forEach(h => {
+    h.addEventListener('click', () => h.closest('.match-card').classList.toggle('expanded'));
+  });
 }
 
 async function updateQueueHint() {
@@ -372,8 +364,117 @@ async function loadRecentSessions() {
 }
 
 function viewSession(id) {
-  // TODO: expand session detail — placeholder
-  console.log('View session', id);
+  pendingSessionExpand = id;
+  document.querySelector('.nav-btn[data-page="sessions"]').click();
+}
+
+// ── SESSIONS PAGE ─────────────────────────────────────────────────────────────
+async function loadSessionsPage() {
+  const el       = document.getElementById('sessions-list');
+  el.innerHTML   = '<div class="loading" style="padding:24px 0;color:var(--dim)">Loading…</div>';
+  const sessions = await api.get('/api/sessions');
+  const finished = sessions.filter(s => s.ended_at);
+
+  if (!finished.length) {
+    el.innerHTML = '<div class="empty"><h3>No completed sessions yet</h3><p>Start a session to begin tracking your play.</p></div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="sessions-list">${finished.map(s => renderSessionHistCard(s)).join('')}</div>`;
+
+  el.querySelectorAll('.sess-hist-header').forEach(header => {
+    header.addEventListener('click', () => toggleSessionCard(header.closest('.sess-hist-card')));
+  });
+
+  if (pendingSessionExpand) {
+    const expandId = pendingSessionExpand;
+    pendingSessionExpand = null;
+    const card = document.getElementById(`shc-${expandId}`);
+    if (card) {
+      await toggleSessionCard(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+}
+
+function renderSessionHistCard(s) {
+  const wins   = s.wins        || 0;
+  const losses = s.losses      || 0;
+  const games  = s.match_count || 0;
+  const wr     = games ? wins / games : null;
+  const title  = s.name
+    || (s.goal ? s.goal.slice(0, 60) : null)
+    || new Date(s.started_at || s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const dateStr = new Date(s.started_at || s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  let dur = '';
+  if (s.started_at && s.ended_at) {
+    const secs = Math.floor((new Date(s.ended_at) - new Date(s.started_at)) / 1000);
+    dur = formatDuration(secs);
+  }
+  const metaParts = [dateStr, dur, games + 'G'].filter(Boolean);
+  const wrHtml = wr != null ? `<span class="sess-hist-wr ${wrClass(wr)}">${pct(wr)}</span>` : '';
+
+  return `<div class="sess-hist-card" id="shc-${s.id}">
+    <div class="sess-hist-header">
+      <span class="sess-hist-title">${title}</span>
+      <span class="sess-hist-wl">
+        <span class="wr-good">${wins}W</span><span style="color:var(--dim)"> – </span><span class="wr-bad">${losses}L</span>
+      </span>
+      ${wrHtml}
+      <span class="sess-hist-meta">${metaParts.join(' · ')}</span>
+      <span class="sess-hist-chevron">▼</span>
+    </div>
+    <div class="sess-hist-body" id="shb-${s.id}">
+      <div class="loading" style="padding:16px 0;color:var(--dim)">Loading…</div>
+    </div>
+  </div>`;
+}
+
+async function toggleSessionCard(card) {
+  const id = card.id.replace('shc-', '');
+  if (!card.classList.contains('expanded') && !card.dataset.loaded) {
+    const data    = await api.get(`/api/sessions/${id}`);
+    const matches = data.matches || [];
+    const body    = document.getElementById(`shb-${id}`);
+
+    if (!matches.length) {
+      body.innerHTML = '<div style="color:var(--dim);padding:16px 0;font-size:13px">No games logged in this session.</div>';
+    } else {
+      const spineHtml = buildSpine(matches);
+      const goalHtml  = data.goal
+        ? `<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:14px">Goal: ${data.goal}</div>`
+        : '';
+      body.innerHTML = `
+        <div class="sess-spine-row">${spineHtml}</div>
+        ${goalHtml}
+        <div class="sess-matches">${[...matches].reverse().map(m => renderMatchCard(m)).join('')}</div>
+      `;
+      body.querySelectorAll('.match-card-header').forEach(h => {
+        h.addEventListener('click', () => h.closest('.match-card').classList.toggle('expanded'));
+      });
+    }
+    card.dataset.loaded = '1';
+  }
+  card.classList.toggle('expanded');
+}
+
+function buildSpine(matches) {
+  const pips = matches.map(m => {
+    const oc = m.outcome === 'Win' ? 'win' : m.outcome === 'Loss' ? 'loss' : 'draw';
+    return `<span class="spine-pip ${oc}"></span>`;
+  }).join('');
+  // Streak summary
+  let streak = 0, streakType = '';
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const oc = matches[i].outcome;
+    if (i === matches.length - 1) { streak = 1; streakType = oc; }
+    else if (oc === streakType)   streak++;
+    else break;
+  }
+  const streakHtml = streak > 1
+    ? `<span class="spine-streak">${streak} ${streakType} streak</span>`
+    : '';
+  return `<div class="momentum-spine">${pips}${streakHtml}</div>`;
 }
 
 function openEditMatch(id) {
