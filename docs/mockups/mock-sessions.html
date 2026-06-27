@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OW Tracker — Sessions (mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060a11; --surface:#0b1018; --panel:#0f1923; --panel-hi:#13202f;
+  --border:#1a2740; --border-hi:#283a5c; --faint:#162033;
+  /* proposed brand accent — desaturated rose (NOT a role color) */
+  --accent:#e0518a; --accent-dim:#7d3354;
+  --win:#42d392; --loss:#f06a6a; --draw:#9aa7b8;
+  /* role palette = data encoding only */
+  --tank:#41a6f0; --dps:#f5933b; --support:#54d98b; --open:#a78bfa;
+  --text:#e6eef8; --muted:#8398b0; --dim:#46587a;
+  --mono:'IBM Plex Mono',monospace; --sans:'Geist',system-ui,sans-serif;
+  --r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{padding-bottom:80px}
+
+/* nav */
+nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:4px;height:58px;padding:0 24px;
+  background:rgba(8,12,20,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+nav .brand{font-weight:700;font-size:19px;letter-spacing:-.01em;margin-right:22px}
+nav .brand b{color:var(--accent);font-weight:700}
+nav a{color:var(--muted);text-decoration:none;font-weight:500;font-size:14.5px;padding:8px 13px;border-radius:8px}
+nav a:hover{color:var(--text);background:var(--faint)}
+nav a.active{color:var(--text);background:var(--panel-hi)}
+nav .sp{flex:1}
+nav .live{color:var(--accent);border:1px solid var(--accent-dim);border-radius:8px;padding:7px 13px;font-weight:600;font-size:13.5px}
+
+main{max-width:1080px;margin:0 auto;padding:28px 24px}
+
+/* page head */
+.head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:6px}
+.head h1{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.head .sub{color:var(--muted);font-size:14px;margin-bottom:4px}
+.filters{display:flex;gap:8px;margin:18px 0 22px}
+.chip{font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--border);padding:6px 13px;border-radius:99px;cursor:pointer}
+.chip.on{color:var(--text);border-color:var(--border-hi);background:var(--panel-hi)}
+
+/* session card */
+.session{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);margin-bottom:14px;overflow:hidden;transition:border-color .15s}
+.session:hover{border-color:var(--border-hi)}
+.s-head{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;padding:18px 20px;cursor:pointer}
+
+/* record block */
+.rec{display:flex;flex-direction:column;gap:3px;min-width:104px}
+.rec .score{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.rec .score .w{color:var(--win)} .rec .score .sep{color:var(--dim)} .rec .score .l{color:var(--loss)}
+.rec .wr{font-size:12.5px;color:var(--muted)}
+.rec .wr b{color:var(--text);font-family:var(--mono);font-weight:500}
+
+/* middle: heroes + spine */
+.mid{display:flex;flex-direction:column;gap:11px;min-width:0}
+.heroes{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.hero{display:flex;align-items:center;gap:7px;background:var(--faint);border:1px solid var(--border);border-radius:8px;padding:4px 10px 4px 8px;font-size:13px;font-weight:500}
+.dot{width:8px;height:8px;border-radius:99px;flex:none}
+.dot.tank{background:var(--tank)} .dot.dps{background:var(--dps)} .dot.support{background:var(--support)}
+.hero .pct{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.heroes .more{font-size:12px;color:var(--dim)}
+
+/* THE SIGNATURE — momentum spine */
+.spine{display:flex;align-items:center;gap:2px;height:34px}
+.seg{position:relative;flex:1;height:100%;border-radius:5px;display:flex;align-items:flex-end;justify-content:center;
+  background:linear-gradient(180deg,transparent,rgba(255,255,255,.02));border:1px solid var(--border);overflow:hidden}
+.seg .fill{position:absolute;left:0;right:0;bottom:0;border-radius:0}
+.seg.win .fill{background:linear-gradient(180deg,rgba(66,211,146,.18),rgba(66,211,146,.42));box-shadow:inset 0 1px 0 rgba(66,211,146,.5)}
+.seg.loss .fill{background:linear-gradient(180deg,rgba(240,106,106,.16),rgba(240,106,106,.40));box-shadow:inset 0 1px 0 rgba(240,106,106,.45)}
+.seg .d{position:relative;font-family:var(--mono);font-size:9.5px;font-weight:500;padding-bottom:3px;letter-spacing:-.03em}
+.seg.win .d{color:#8ff0c3} .seg.loss .d{color:#ffb0b0}
+.seg.streak{outline:1px solid var(--accent);outline-offset:0}
+.spine-meta{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--muted);margin-top:1px}
+.spine-meta .tag{display:flex;align-items:center;gap:5px}
+.spine-meta b{color:var(--text);font-family:var(--mono);font-weight:500}
+.heat{color:var(--loss);font-weight:600}
+
+/* right: rank delta + meta */
+.rt{display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:150px}
+.srδ{font-family:var(--mono);font-size:15px;font-weight:600}
+.srδ.up{color:var(--win)} .srδ.down{color:var(--loss)}
+.srδ small{color:var(--muted);font-weight:400;font-size:11px}
+.goal{font-size:12px;color:var(--muted);text-align:right;max-width:200px}
+.goal .gi{color:var(--accent);font-weight:600}
+.meta{font-size:11.5px;color:var(--dim);font-family:var(--mono)}
+.caret{color:var(--dim);font-size:13px;transition:transform .15s}
+.session.open .caret{transform:rotate(180deg)}
+
+/* expanded L1: match list */
+.matches{border-top:1px solid var(--border);background:var(--surface);display:none}
+.session.open .matches{display:block}
+.m-row{display:grid;grid-template-columns:165px 1fr auto auto auto;gap:18px;align-items:center;
+  padding:12px 20px 12px 24px;border-bottom:1px solid var(--faint);cursor:pointer;position:relative}
+.m-row:last-child{border-bottom:none}
+.m-row:hover{background:var(--panel)}
+.m-edge{position:absolute;left:0;top:0;bottom:0;width:3px}
+.m-row.win .m-edge{background:var(--win)} .m-row.loss .m-edge{background:var(--loss)}
+.m-map{display:flex;flex-direction:column;gap:1px}
+.m-map .name{font-weight:600;font-size:14px}
+.m-map .mode{font-size:11px;color:var(--dim)}
+.m-hero{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.m-hero .vs{color:var(--dim);font-size:12px;margin:0 2px}
+.m-hero .enemy{color:var(--muted)}
+.m-out{font-weight:700;font-size:12px;letter-spacing:.04em;width:46px}
+.m-out.win{color:var(--win)} .m-out.loss{color:var(--loss)}
+.m-kda{font-family:var(--mono);font-size:13px;color:var(--text)}
+.m-kda small{color:var(--dim)}
+.m-goal{font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--border)}
+.m-goal.y{color:var(--win);border-color:var(--accent-dim)}
+.m-goal.s{color:var(--draw)}
+.m-goal.n{color:var(--loss)}
+.l2-hint{padding:11px 20px;font-size:12px;color:var(--dim);border-bottom:1px solid var(--faint);font-style:italic}
+
+.note{max-width:1080px;margin:8px auto 0;padding:14px 24px;color:var(--dim);font-size:12.5px;border-top:1px dashed var(--border)}
+.note b{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">OW <b>Tracker</b></span>
+  <a href="#">Dashboard</a>
+  <a href="#" class="live">● Live Session</a>
+  <a href="#" class="active">Sessions</a>
+  <a href="#">Queue</a>
+  <a href="#">History</a>
+  <a href="#">Analytics</a>
+  <span class="sp"></span>
+  <a href="#">Settings</a>
+</nav>
+
+<main>
+  <div class="head">
+    <div>
+      <h1>Sessions</h1>
+      <div class="sub">23 sessions · 184 games tracked</div>
+    </div>
+    <div class="filters">
+      <span class="chip on">All</span>
+      <span class="chip">This season</span>
+      <span class="chip">Tank</span>
+      <span class="chip">Has goal</span>
+    </div>
+  </div>
+
+  <!-- SESSION 1 — expanded to show L1 -->
+  <div class="session open">
+    <div class="s-head">
+      <div class="rec">
+        <div class="score"><span class="w">5</span><span class="sep">–</span><span class="l">3</span></div>
+        <div class="wr">WR <b>63%</b> · 8 games</div>
+      </div>
+      <div class="mid">
+        <div class="heroes">
+          <span class="hero"><span class="dot tank"></span>Reinhardt<span class="pct">62%</span></span>
+          <span class="hero"><span class="dot tank"></span>Zarya<span class="pct">25%</span></span>
+          <span class="hero"><span class="dot tank"></span>Sigma<span class="pct">13%</span></span>
+        </div>
+        <div class="spine">
+          <div class="seg win"><div class="fill" style="height:54%"></div><div class="d">+24</div></div>
+          <div class="seg win"><div class="fill" style="height:66%"></div><div class="d">+22</div></div>
+          <div class="seg loss"><div class="fill" style="height:40%"></div><div class="d">−21</div></div>
+          <div class="seg win"><div class="fill" style="height:58%"></div><div class="d">+23</div></div>
+          <div class="seg loss"><div class="fill" style="height:44%"></div><div class="d">−25</div></div>
+          <div class="seg loss"><div class="fill" style="height:34%"></div><div class="d">−22</div></div>
+          <div class="seg win"><div class="fill" style="height:70%"></div><div class="d">+26</div></div>
+          <div class="seg win streak"><div class="fill" style="height:76%"></div><div class="d">+27</div></div>
+        </div>
+        <div class="spine-meta">
+          <span class="tag">Peak run <b>W-W</b></span>
+          <span class="tag">Worst dip <span class="heat">L-L</span> mid-session</span>
+          <span class="tag">Ended on a <b>2-win climb</b></span>
+        </div>
+      </div>
+      <div class="rt">
+        <div class="srδ up">+54 SR <small>Diamond 3 → Diamond 2</small></div>
+        <div class="goal">Goal: <span class="gi">Rein shatter discipline</span></div>
+        <div class="meta">2h 12m · Jun 25, 9:48 PM</div>
+        <div class="caret">▾</div>
+      </div>
+    </div>
+
+    <div class="matches">
+      <div class="m-row win">
+        <div class="m-edge"></div>
+        <div class="m-map"><span class="name">King's Row</span><span class="mode">Hybrid</span></div>
+        <div class="m-hero"><span class="dot tank"></span>Reinhardt<span class="vs">vs</span><span class="enemy">Winston · Dive</span></div>
+        <div class="m-out win">WIN</div>
+        <div class="m-kda">28 <small>/</small> 6 <small>/</small> 19</div>
+        <div class="m-goal y">Goal ✓</div>
+      </div>
+      <div class="m-row win">
+        <div class="m-edge"></div>
+        <div class="m-map"><span class="name">Antarctic Peninsula</span><span class="mode">Control</span></div>
+        <div class="m-hero"><span class="dot tank"></span>Reinhardt<span class="vs">vs</span><span class="enemy">Ramattra · Brawl</span></div>
+        <div class="m-out win">WIN</div>
+        <div class="m-kda">24 <small>/</small> 8 <small>/</small> 15</div>
+        <div class="m-goal y">Goal ✓</div>
+      </div>
+      <div class="m-row loss">
+        <div class="m-edge"></div>
+        <div class="m-map"><span class="name">Lijiang Tower</span><span class="mode">Control</span></div>
+        <div class="m-hero"><span class="dot tank"></span>Zarya<span class="vs">vs</span><span class="enemy">D.Va · Dive</span></div>
+        <div class="m-out loss">LOSS</div>
+        <div class="m-kda">19 <small>/</small> 11 <small>/</small> 9</div>
+        <div class="m-goal s">Sort of</div>
+      </div>
+      <div class="m-row win">
+        <div class="m-edge"></div>
+        <div class="m-map"><span class="name">Numbani</span><span class="mode">Hybrid</span></div>
+        <div class="m-hero"><span class="dot tank"></span>Reinhardt<span class="vs">vs</span><span class="enemy">Sigma · Poke</span></div>
+        <div class="m-out win">WIN</div>
+        <div class="m-kda">31 <small>/</small> 7 <small>/</small> 12</div>
+        <div class="m-goal y">Goal ✓</div>
+      </div>
+      <div class="m-row loss">
+        <div class="m-edge"></div>
+        <div class="m-map"><span class="name">Dorado</span><span class="mode">Escort</span></div>
+        <div class="m-hero"><span class="dot tank"></span>Reinhardt<span class="vs">vs</span><span class="enemy">Orisa · Brawl</span></div>
+        <div class="m-out loss">LOSS</div>
+        <div class="m-kda">22 <small>/</small> 13 <small>/</small> 14</div>
+        <div class="m-goal n">Missed</div>
+      </div>
+      <div class="l2-hint">Click any match to expand the full 10-player scoreboard, enemy comp, bans, and notes (L2).</div>
+    </div>
+  </div>
+
+  <!-- SESSION 2 — collapsed L0 -->
+  <div class="session">
+    <div class="s-head">
+      <div class="rec">
+        <div class="score"><span class="w">3</span><span class="sep">–</span><span class="l">4</span></div>
+        <div class="wr">WR <b>43%</b> · 7 games</div>
+      </div>
+      <div class="mid">
+        <div class="heroes">
+          <span class="hero"><span class="dot tank"></span>Winston<span class="pct">71%</span></span>
+          <span class="hero"><span class="dot tank"></span>D.Va<span class="pct">29%</span></span>
+        </div>
+        <div class="spine">
+          <div class="seg loss"><div class="fill" style="height:40%"></div><div class="d">−23</div></div>
+          <div class="seg win"><div class="fill" style="height:60%"></div><div class="d">+25</div></div>
+          <div class="seg loss"><div class="fill" style="height:38%"></div><div class="d">−24</div></div>
+          <div class="seg loss"><div class="fill" style="height:30%"></div><div class="d">−22</div></div>
+          <div class="seg win"><div class="fill" style="height:62%"></div><div class="d">+26</div></div>
+          <div class="seg win"><div class="fill" style="height:64%"></div><div class="d">+24</div></div>
+          <div class="seg loss streak"><div class="fill" style="height:32%"></div><div class="d">−25</div></div>
+        </div>
+        <div class="spine-meta">
+          <span class="tag">Ended on a <span class="heat">loss</span> — possible tilt stop</span>
+          <span class="tag">Net <b>−18 SR</b></span>
+        </div>
+      </div>
+      <div class="rt">
+        <div class="srδ down">−18 SR <small>Diamond 2 → Diamond 3</small></div>
+        <div class="goal">Goal: <span class="gi">Dive timing on cooldowns</span></div>
+        <div class="meta">1h 41m · Jun 24, 10:12 PM</div>
+        <div class="caret">▾</div>
+      </div>
+    </div>
+    <div class="matches"></div>
+  </div>
+
+  <!-- SESSION 3 — collapsed L0 -->
+  <div class="session">
+    <div class="s-head">
+      <div class="rec">
+        <div class="score"><span class="w">6</span><span class="sep">–</span><span class="l">2</span></div>
+        <div class="wr">WR <b>75%</b> · 8 games</div>
+      </div>
+      <div class="mid">
+        <div class="heroes">
+          <span class="hero"><span class="dot tank"></span>Reinhardt<span class="pct">88%</span></span>
+          <span class="hero"><span class="dot tank"></span>Mauga<span class="pct">12%</span></span>
+        </div>
+        <div class="spine">
+          <div class="seg win"><div class="fill" style="height:58%"></div><div class="d">+23</div></div>
+          <div class="seg win"><div class="fill" style="height:62%"></div><div class="d">+24</div></div>
+          <div class="seg win"><div class="fill" style="height:68%"></div><div class="d">+25</div></div>
+          <div class="seg loss"><div class="fill" style="height:42%"></div><div class="d">−22</div></div>
+          <div class="seg win"><div class="fill" style="height:60%"></div><div class="d">+23</div></div>
+          <div class="seg win"><div class="fill" style="height:66%"></div><div class="d">+26</div></div>
+          <div class="seg loss"><div class="fill" style="height:40%"></div><div class="d">−21</div></div>
+          <div class="seg win streak"><div class="fill" style="height:72%"></div><div class="d">+27</div></div>
+        </div>
+        <div class="spine-meta">
+          <span class="tag">Strong open <b>W-W-W</b></span>
+          <span class="tag">Best session this week</span>
+        </div>
+      </div>
+      <div class="rt">
+        <div class="srδ up">+105 SR <small>Platinum 1 → Diamond 4</small></div>
+        <div class="goal">Goal: <span class="gi">none set</span></div>
+        <div class="meta">2h 03m · Jun 23, 8:30 PM</div>
+        <div class="caret">▾</div>
+      </div>
+    </div>
+    <div class="matches"></div>
+  </div>
+
+</main>
+
+<div class="note">
+  <b>Mock — Sessions view.</b> Font: Geist (sans) + IBM Plex Mono (numbers). Accent: desaturated rose <span style="color:#e0518a">●</span> (proposed; not a role color). Role colors (tank/dps/support) used only on hero dots = data encoding. Signature: the <b>momentum spine</b> (per-game W/L bars + SR delta, streak outlined in accent, plain-language read below). Session 1 is expanded to L1 (match list); L2 = full scoreboard on match click.
+</div>
+
+<script>
+document.querySelectorAll('.s-head').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('open')));
+</script>
+</body>
+</html>

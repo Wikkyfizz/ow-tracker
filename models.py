@@ -8,6 +8,26 @@ class HeroEntry(BaseModel):
     pct: int = Field(ge=25, le=100, description="25 / 50 / 75 / 100")
 
 
+class SessionCreate(BaseModel):
+    goal: str = ""
+    focus_mode: bool = False
+
+
+class SessionUpdate(BaseModel):
+    goal: Optional[str] = None
+    focus_mode: Optional[bool] = None
+    name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class MatchParticipant(BaseModel):
+    player_name: str = ""
+    team: str  # "ally" or "enemy"
+    heroes: list[HeroEntry] = []
+    stats: dict = {}
+    name_confidence: float = 1.0
+
+
 class MatchCreate(BaseModel):
     played_at: Optional[datetime] = None
     map: str
@@ -34,6 +54,10 @@ class MatchCreate(BaseModel):
     stack_size: int = 1
     screenshot_path: str = ""
     data_source: str = "manual"
+    practiced: Optional[str] = None
+    practice_notes: str = ""
+    is_historical: bool = False
+    participants: list[MatchParticipant] = []
 
 
 class MatchUpdate(MatchCreate):

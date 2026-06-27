@@ -12,12 +12,15 @@
 <nav>
   <h1><span class="ow">OW</span> Tracker</h1>
   <button class="nav-btn active" data-page="dashboard">Dashboard</button>
-  <button class="nav-btn" data-page="add">Add Match</button>
+  <button class="nav-btn session-nav-btn" id="session-nav-btn" data-page="session">
+    <span id="sess-nav-text">Start Session</span>
+  </button>
   <button class="nav-btn" data-page="queue">Queue <span id="queue-badge" class="badge" style="display:none">0</span></button>
   <button class="nav-btn" data-page="history">History</button>
   <button class="nav-btn" data-page="analytics">Analytics</button>
   <button class="nav-btn" data-page="settings">Settings</button>
   <div class="spacer"></div>
+  <button class="nav-btn nav-btn-hist" id="add-historical-btn">+ Historical</button>
   <span class="nav-status" id="nav-status"></span>
 </nav>
 
@@ -55,103 +58,110 @@
   </div>
 </div>
 
-<!-- ADD MATCH -->
-<div class="page" id="page-add">
-  <div class="card" style="max-width:860px">
-    <h2>Add Match</h2>
-    <div class="alert alert-info" id="parse-hint">Tip: Drop a screenshot in your inbox folder and it'll appear in the Queue tab pre-filled.</div>
+<!-- SESSION -->
+<div class="page" id="page-session">
 
-    <form id="match-form" style="margin-top:14px">
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Map *</label>
-          <select id="f-map" required></select>
+  <!-- Idle: no active session -->
+  <div id="sess-idle">
+    <div class="session-start-wrap">
+      <div class="card session-start-card">
+        <h2>Session</h2>
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Goal (optional)</label>
+          <textarea id="s-goal" rows="2" placeholder="What are you working on? e.g. 'Practice Winston dive timing'"></textarea>
         </div>
-        <div class="form-group">
-          <label>Outcome *</label>
-          <select id="f-outcome" required>
-            <option value="">Select…</option>
-            <option>Win</option>
-            <option>Loss</option>
-            <option>Draw</option>
-          </select>
+        <label class="focus-label">
+          <input type="checkbox" id="s-focus-check">
+          Focus Mode — hide rank / WR during the session
+        </label>
+        <button class="btn btn-session-start" id="s-start-btn">Start Session</button>
+      </div>
+    </div>
+    <div style="max-width:760px; margin:24px auto 0">
+      <div class="section-label">Recent Sessions</div>
+      <div id="recent-sessions"><div class="loading" style="padding:20px 0">No sessions yet.</div></div>
+    </div>
+  </div>
+
+  <!-- Summary shown briefly after ending -->
+  <div id="sess-summary" style="display:none">
+    <div class="card" style="max-width:560px;margin:40px auto;text-align:center;border-left-color:var(--accent2)!important">
+      <h2>Session Complete</h2>
+      <div id="sess-summary-content" style="margin:16px 0; font-size:15px; color:var(--muted)"></div>
+      <button class="btn btn-secondary" id="sess-summary-dismiss">Back to sessions</button>
+    </div>
+  </div>
+
+  <!-- Active: session running -->
+  <div id="sess-active" style="display:none">
+    <div class="session-topbar">
+      <div class="sess-goal" id="sess-goal-text"></div>
+      <div class="sess-controls">
+        <label class="focus-toggle-label">
+          <input type="checkbox" id="sess-focus-toggle"> Focus Mode
+        </label>
+        <button class="btn btn-danger btn-sm" id="sess-end-btn">End Session</button>
+      </div>
+    </div>
+
+    <div class="sess-stats-bar" id="sess-stats-bar">
+      <div class="sess-stat">
+        <div class="sess-stat-val" id="ss-games">0</div>
+        <div class="sess-stat-label">Games</div>
+      </div>
+      <div class="sess-stat">
+        <div class="sess-stat-val wr-good" id="ss-wins">0</div>
+        <div class="sess-stat-label">Wins</div>
+      </div>
+      <div class="sess-stat">
+        <div class="sess-stat-val wr-bad" id="ss-losses">0</div>
+        <div class="sess-stat-label">Losses</div>
+      </div>
+      <div class="sess-stat focus-hide">
+        <div class="sess-stat-val" id="ss-wr">—</div>
+        <div class="sess-stat-label">Win Rate</div>
+      </div>
+      <div class="sess-stat focus-hide">
+        <div class="sess-stat-val" id="ss-rank-delta">—</div>
+        <div class="sess-stat-label">Rank Δ</div>
+      </div>
+      <div class="sess-stat">
+        <div class="sess-stat-val" id="ss-timer">0:00</div>
+        <div class="sess-stat-label">Duration</div>
+      </div>
+    </div>
+
+    <div class="sess-grid">
+      <div class="card sess-games-card">
+        <h2>Games This Session</h2>
+        <div id="sess-games-list"><p style="color:var(--muted);padding:12px 0">No games yet.</p></div>
+      </div>
+      <div class="sess-side">
+        <div class="card">
+          <button class="btn btn-primary" id="sess-add-game-btn" style="width:100%;justify-content:center">+ Add Game</button>
+          <div id="sess-queue-hint" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
         </div>
-        <div class="form-group">
-          <label>Date / Time</label>
-          <input type="datetime-local" id="f-played-at">
-        </div>
       </div>
-
-      <div style="margin-top:16px">
-        <label>My Heroes (click to select, click pct to cycle)</label>
-        <div class="hero-list" id="f-my-heroes"></div>
-      </div>
-
-      <div style="margin-top:14px">
-        <label>Enemy Heroes</label>
-        <div class="hero-list" id="f-enemy-heroes"></div>
-      </div>
-
-      <div style="margin-top:14px">
-        <label>Bans (optional)</label>
-        <div class="hero-list" id="f-bans"></div>
-      </div>
-
-      <div style="margin-top:16px">
-        <label style="display:block;margin-bottom:6px">Rank (optional)</label>
-        <div class="rank-row">
-          <div class="form-group">
-            <label>Tier</label>
-            <select id="f-rank-tier">
-              <option value="">—</option>
-              <option>Bronze</option><option>Silver</option><option>Gold</option>
-              <option>Platinum</option><option>Diamond</option><option>Master</option>
-              <option>Grandmaster</option><option>Champion</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Division</label>
-            <select id="f-rank-div">
-              <option value="">—</option>
-              <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>%</label>
-            <input type="number" id="f-rank-pct" min="0" max="100" step="1" placeholder="0–100">
-          </div>
-        </div>
-      </div>
-
-      <div class="form-grid" style="margin-top:16px">
-        <div class="form-group"><label>Elims</label><input type="number" id="f-elims" min="0"></div>
-        <div class="form-group"><label>Deaths</label><input type="number" id="f-deaths" min="0"></div>
-        <div class="form-group"><label>Assists</label><input type="number" id="f-assists" min="0"></div>
-        <div class="form-group"><label>Damage</label><input type="number" id="f-damage" min="0"></div>
-        <div class="form-group"><label>Healing</label><input type="number" id="f-healing" min="0"></div>
-        <div class="form-group"><label>Mitigation</label><input type="number" id="f-mitigation" min="0"></div>
-        <div class="form-group"><label>Game Length (s)</label><input type="number" id="f-game-length" min="0"></div>
-      </div>
-
-      <div class="form-group" style="margin-top:14px">
-        <label>Notes</label>
-        <textarea id="f-notes" placeholder="What went well? What to improve?"></textarea>
-      </div>
-
-      <div style="margin-top:16px; display:flex; gap:8px">
-        <button type="submit" class="btn btn-primary">Save Match</button>
-        <button type="button" class="btn btn-secondary" id="form-clear-btn">Clear</button>
-      </div>
-      <div id="form-msg" style="margin-top:8px; font-size:13px;"></div>
-    </form>
+    </div>
   </div>
 </div>
 
 <!-- QUEUE -->
 <div class="page" id="page-queue">
-  <div id="queue-empty" class="empty">
+  <div class="card" style="margin-bottom:16px">
+    <h2>Parse a screenshot manually</h2>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:260px">
+        <label>Screenshot path</label>
+        <input type="text" id="q-manual-path" placeholder="E:\Claude stuff\OW screenshots\screenshot.png">
+      </div>
+      <button class="btn btn-secondary" id="q-parse-btn">Parse File</button>
+    </div>
+    <div id="q-parse-msg" style="margin-top:8px;font-size:13px"></div>
+  </div>
+  <div id="queue-empty" class="empty" style="display:none">
     <h3>No matches in queue</h3>
-    <p>Screenshot a Game Reports tab with ShareX → it will appear here automatically.</p>
+    <p>Drop a screenshot in your inbox folder, or use the manual parse above.</p>
   </div>
   <div id="queue-list"></div>
 </div>
@@ -190,28 +200,24 @@
     <button class="tab-btn" data-tab="a-bans">Bans</button>
     <button class="tab-btn" data-tab="a-stack">Stack Size</button>
   </div>
-
   <div class="tab-panel active" id="a-heroes">
     <div class="card table-wrap"><table>
       <thead><tr><th>Hero</th><th>Win Rate</th><th>Weighted Games</th><th></th></tr></thead>
       <tbody id="t-hero-wr"></tbody>
     </table></div>
   </div>
-
   <div class="tab-panel" id="a-maps">
     <div class="card table-wrap"><table>
       <thead><tr><th>Map</th><th>Mode</th><th>Comp Affinity</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
       <tbody id="t-map-wr"></tbody>
     </table></div>
   </div>
-
   <div class="tab-panel" id="a-comp">
     <div class="card table-wrap"><table>
       <thead><tr><th>My Comp</th><th>vs Enemy Comp</th><th>Win Rate</th><th>Games</th></tr></thead>
       <tbody id="t-comp-mu"></tbody>
     </table></div>
   </div>
-
   <div class="tab-panel" id="a-enemy">
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
       <div class="card table-wrap">
@@ -226,21 +232,18 @@
       </div>
     </div>
   </div>
-
   <div class="tab-panel" id="a-teammates">
     <div class="card table-wrap"><table>
       <thead><tr><th>Player</th><th>Alias</th><th>Win Rate</th><th>Games</th></tr></thead>
       <tbody id="t-teammates"></tbody>
     </table></div>
   </div>
-
   <div class="tab-panel" id="a-bans">
     <div class="card table-wrap"><table>
       <thead><tr><th>Hero</th><th>Times Banned</th><th>Ban Rate</th><th>Win Rate When Banned</th></tr></thead>
       <tbody id="t-bans"></tbody>
     </table></div>
   </div>
-
   <div class="tab-panel" id="a-stack">
     <div class="card table-wrap"><table>
       <thead><tr><th>Stack Size</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
@@ -266,10 +269,12 @@
         <label>Inbox Folder (ShareX saves here)</label>
         <input type="text" id="s-inbox" placeholder="C:\OW-Tracker\inbox">
       </div>
-      <button class="btn btn-primary" id="s-save-btn">Save Settings</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-primary" id="s-save-btn">Save Settings</button>
+        <button class="btn btn-secondary" id="s-restart-btn">Save &amp; Restart Watcher</button>
+      </div>
       <div id="s-msg" style="margin-top:8px; font-size:13px;"></div>
     </div>
-
     <div class="card">
       <h2>Tracked Players</h2>
       <div id="tracked-list" style="margin-bottom:12px"></div>
@@ -279,7 +284,6 @@
       </div>
       <button class="btn btn-secondary btn-sm" id="s-add-player-btn">+ Add Player</button>
     </div>
-
     <div class="card">
       <h2>Map Comp Affinities</h2>
       <div class="table-wrap"><table id="map-config-table">
@@ -287,7 +291,6 @@
         <tbody id="map-config-body"></tbody>
       </table></div>
     </div>
-
     <div class="card">
       <h2>OverFast Baseline</h2>
       <p style="color:var(--muted); margin-bottom:12px; font-size:13px">Fetches your cumulative career stats from Blizzard's public data via OverFast API. One-time pull; won't replace per-match tracking.</p>
@@ -298,6 +301,116 @@
 </div>
 
 </main>
+
+<!-- ── GAME ENTRY MODAL ──────────────────────────────────────────────────────── -->
+<div id="game-modal" class="modal-overlay" style="display:none">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <h2 id="modal-title-text">Log Game</h2>
+      <button class="modal-close-btn" id="modal-close-btn" type="button">✕</button>
+    </div>
+
+    <div id="modal-ocr-banner" class="alert alert-info modal-ocr-banner" style="display:none;margin:12px 20px 0"></div>
+
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group" id="mf-map">
+          <label>Map *</label>
+          <select id="m-map" required></select>
+        </div>
+        <div class="form-group" id="mf-outcome">
+          <label>Outcome *</label>
+          <select id="m-outcome" required>
+            <option value="">Select…</option>
+            <option>Win</option><option>Loss</option><option>Draw</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date / Time</label>
+          <input type="datetime-local" id="m-played-at">
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <label>My Heroes (click to select, click % to cycle)</label>
+        <div class="hero-list" id="m-my-heroes"></div>
+      </div>
+      <div style="margin-top:14px">
+        <label>Enemy Heroes</label>
+        <div class="hero-list" id="m-enemy-heroes"></div>
+      </div>
+      <div style="margin-top:14px">
+        <label>Bans (optional)</label>
+        <div class="hero-list" id="m-bans"></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <label style="display:block;margin-bottom:6px">Rank (optional)</label>
+        <div class="rank-row">
+          <div class="form-group" id="mf-rank-tier">
+            <label>Tier</label>
+            <select id="m-rank-tier">
+              <option value="">—</option>
+              <option>Bronze</option><option>Silver</option><option>Gold</option>
+              <option>Platinum</option><option>Diamond</option><option>Master</option>
+              <option>Grandmaster</option><option>Champion</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Division</label>
+            <select id="m-rank-div">
+              <option value="">—</option>
+              <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>%</label>
+            <input type="number" id="m-rank-pct" min="0" max="100" step="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:16px">
+        <div class="form-group" id="mf-elims"><label>Elims</label><input type="number" id="m-elims" min="0"></div>
+        <div class="form-group" id="mf-deaths"><label>Deaths</label><input type="number" id="m-deaths" min="0"></div>
+        <div class="form-group" id="mf-assists"><label>Assists</label><input type="number" id="m-assists" min="0"></div>
+        <div class="form-group" id="mf-damage"><label>Damage</label><input type="number" id="m-damage" min="0"></div>
+        <div class="form-group" id="mf-healing"><label>Healing</label><input type="number" id="m-healing" min="0"></div>
+        <div class="form-group" id="mf-mitigation"><label>Mitigation</label><input type="number" id="m-mitigation" min="0"></div>
+        <div class="form-group"><label>Game Length (s)</label><input type="number" id="m-game-length" min="0"></div>
+      </div>
+
+      <!-- Practice check: only when session active -->
+      <div id="modal-practice-section" style="display:none; margin-top:18px">
+        <div class="card practice-card">
+          <h2>Session Focus</h2>
+          <p id="modal-goal-display" style="color:var(--muted);font-size:13px;margin-bottom:12px;font-style:italic"></p>
+          <label>Did you focus on your goal?</label>
+          <div class="practice-options">
+            <button type="button" class="practice-btn" data-val="Y">Yes</button>
+            <button type="button" class="practice-btn" data-val="Sort of">Sort of</button>
+            <button type="button" class="practice-btn" data-val="N">No</button>
+          </div>
+          <div class="form-group" style="margin-top:10px">
+            <label>Practice Notes (optional)</label>
+            <textarea id="m-practice-notes" rows="2" placeholder="More detail…"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label>Notes</label>
+        <textarea id="m-notes" rows="2" placeholder="What went well? What to improve?"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="modal-save-btn">Save Game</button>
+      <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+      <span id="modal-msg" style="font-size:13px; margin-left:8px"></span>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

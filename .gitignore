@@ -14,3 +14,6 @@ build/
 inbox/
 # Hero icons are intentionally committed so the tool works out-of-the-box.
 # Regenerate / update them with: python fetch_icons.py
+
+# Disposable mock-render screenshots (regenerate via Edge headless)
+docs/mockups/_preview-*.png
