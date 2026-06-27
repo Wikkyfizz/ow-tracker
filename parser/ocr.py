@@ -49,13 +49,56 @@ PORTRAIT_X_FRAC = (558 / _REF_W, 628 / _REF_W)   # (x1_frac, x2_frac)
 def _px(frac, dim):
     return int(frac * dim)
 
-def row_slots(img_w, img_h):
-    """Return (my_team_rows, enemy_team_rows) as lists of (x1,y1,x2,y2) pixel tuples."""
+
+def _refine_row_center(img_bgr, y_approx, img_w, img_h, window=45):
+    """
+    Find the true vertical center of a player row by locating bright stat text
+    across the full stat band (elims → mitigation).  Searches within ±window pixels
+    of y_approx; falls back to y_approx when no text signal is found.
+
+    Needed because the optional player title display varies row height per player,
+    making fixed fractional offsets inaccurate for some rows.
+    """
+    x1 = int(STAT_COLS_FRAC["elims"][0]      * img_w)
+    x2 = int(STAT_COLS_FRAC["mitigation"][1] * img_w)
+    y_lo = max(0, y_approx - window)
+    y_hi = min(img_h, y_approx + window)
+
+    strip = img_bgr[y_lo:y_hi, x1:x2]
+    # Average channels instead of full BGR→gray to avoid cv2 import here
+    bright = (strip.mean(axis=2) > 190).astype(np.float32)
+    row_sums = bright.sum(axis=1)
+
+    if row_sums.max() < 5:           # not enough bright pixels — use default
+        return y_approx
+
+    ys = np.arange(len(row_sums), dtype=np.float32)
+    centroid = float((ys * row_sums).sum() / row_sums.sum())
+    refined = int(y_lo + centroid)
+    # Titles only push row content DOWN; a large upward shift means we caught
+    # column header text above the row (e.g. "E A D DMG H MIT").  Clamp.
+    return max(refined, y_approx - 10)
+
+
+def row_slots(img_w, img_h, img_bgr=None):
+    """
+    Return (my_team_rows, enemy_team_rows) as lists of (x1,y1,x2,y2) pixel tuples.
+    When img_bgr is supplied, refines each row's y-center from stat column text
+    positions, handling variable row height caused by player title display.
+    """
     px1 = _px(PORTRAIT_X_FRAC[0], img_w)
     px2 = _px(PORTRAIT_X_FRAC[1], img_w)
     half_h = _px(ROW_HALF_H_FRAC, img_h)
-    my_rows    = [(px1, _px(f, img_h) - half_h, px2, _px(f, img_h) + half_h) for f in MY_TEAM_ROW_Y_FRAC]
-    enemy_rows = [(px1, _px(f, img_h) - half_h, px2, _px(f, img_h) + half_h) for f in ENEMY_TEAM_ROW_Y_FRAC]
+
+    my_ys    = [_px(f, img_h) for f in MY_TEAM_ROW_Y_FRAC]
+    enemy_ys = [_px(f, img_h) for f in ENEMY_TEAM_ROW_Y_FRAC]
+
+    if img_bgr is not None:
+        my_ys    = [_refine_row_center(img_bgr, y, img_w, img_h) for y in my_ys]
+        enemy_ys = [_refine_row_center(img_bgr, y, img_w, img_h) for y in enemy_ys]
+
+    my_rows    = [(px1, cy - half_h, px2, cy + half_h) for cy in my_ys]
+    enemy_rows = [(px1, cy - half_h, px2, cy + half_h) for cy in enemy_ys]
     return my_rows, enemy_rows
 
 # Legacy pixel constants kept for callers that haven't migrated yet (1920×1080 assumed)

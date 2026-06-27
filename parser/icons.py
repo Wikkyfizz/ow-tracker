@@ -112,7 +112,7 @@ def extract_heroes(img_path: str) -> dict:
         if img_bgr is None:
             return {"my_heroes": [], "enemy_heroes": [], "confidence": 0.0, "warning": f"Could not load image: {img_path}"}
 
-        my_slots, enemy_slots = row_slots(W, H)
+        my_slots, enemy_slots = row_slots(W, H, img_bgr)
         my_heroes, enemy_heroes, scores = [], [], []
 
         for slot in my_slots:
@@ -151,7 +151,7 @@ def extract_portrait_crop(img_path: str, team: str, row: int) -> "np.ndarray | N
         img_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
         if img_bgr is None:
             return None
-        my_slots, enemy_slots = row_slots(W, H)
+        my_slots, enemy_slots = row_slots(W, H, img_bgr)
         slots = my_slots if team == "my" else enemy_slots
         l, t, r, b = slots[row]
         crop = img_bgr[t:b, l:r]
