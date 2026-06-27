@@ -902,6 +902,35 @@ async function deleteMatch(id) {
 }
 
 // ── ANALYTICS ─────────────────────────────────────────────────────────────────
+// ── ANALYTICS HELPERS ─────────────────────────────────────────────────────────
+function aBarColor(wr) {
+  if (wr >= 0.55) return 'var(--win)';
+  if (wr >= 0.45) return 'var(--gold)';
+  return 'var(--loss)';
+}
+
+function renderARow({ label, sub, wr, barFrac, barColor, gamesStr, conf, extra }) {
+  const frac  = barFrac != null ? barFrac : (wr ?? 0);
+  const barW  = Math.round(Math.min(frac, 1) * 100);
+  const color = barColor ?? (wr != null ? aBarColor(wr) : 'var(--accent)');
+  const valStr = wr != null ? pct(wr) : '';
+  const valCls = wr != null ? wrClass(wr) : '';
+  return `<div class="a-row">
+    <span class="a-label">${label}</span>
+    ${sub ? `<span class="a-sub">${sub}</span>` : ''}
+    <span class="a-bar-wrap"><span class="a-bar" style="width:${barW}%;background:${color}"></span></span>
+    ${valStr ? `<span class="a-pct ${valCls}">${valStr}</span>` : '<span class="a-pct"></span>'}
+    ${gamesStr ? `<span class="a-games">${gamesStr}</span>` : '<span class="a-games"></span>'}
+    ${conf ? '<span class="conf-tag">low n</span>' : ''}
+    ${extra ?? ''}
+  </div>`;
+}
+
+function aEmpty(msg) {
+  return `<div class="empty" style="padding:20px 0"><p>${msg}</p></div>`;
+}
+
+// ── ANALYTICS ─────────────────────────────────────────────────────────────────
 const analyticsLoaded = {};
 async function loadAnalyticsTab(tab) {
   if (analyticsLoaded[tab]) return;
@@ -909,70 +938,154 @@ async function loadAnalyticsTab(tab) {
 
   if (tab === 'a-heroes') {
     const data = await api.get('/api/analytics/hero-winrates');
-    document.getElementById('t-hero-wr').innerHTML = data.map(h =>
-      `<tr><td>${h.hero}</td>
-       <td><span class="${wrClass(h.win_rate)}">${pct(h.win_rate)}</span> ${wrBar(h.win_rate)}</td>
-       <td>${h.weighted_games}</td>
-       <td>${wrBar(h.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) {
+      ['a-heroes-conc-body','a-heroes-wr-body'].forEach(id => document.getElementById(id).innerHTML = aEmpty('No games logged yet.'));
+      document.getElementById('a-heroes-conc-ans').textContent = '';
+      document.getElementById('a-heroes-wr-ans').textContent   = '';
+      return;
+    }
+    const totalW  = data.reduce((s, h) => s + h.weighted_games, 0);
+    const byUsage = [...data].sort((a, b) => b.weighted_games - a.weighted_games);
+    const topPct  = totalW > 0 ? Math.round(byUsage[0].weighted_games / totalW * 100) : 0;
+
+    document.getElementById('a-heroes-conc-ans').textContent = topPct >= 60
+      ? `One-trick risk — ${byUsage[0].hero} is ${topPct}% of your playtime.`
+      : topPct >= 40
+        ? `Main lean — ${byUsage[0].hero} at ${topPct}% across a pool of ${data.length}.`
+        : `Diversified pool of ${data.length} heroes, top at ${topPct}%.`;
+
+    document.getElementById('a-heroes-conc-body').innerHTML = byUsage.map(h => {
+      const usagePct = totalW > 0 ? h.weighted_games / totalW : 0;
+      return renderARow({
+        label: h.hero,
+        sub: `${Math.round(h.weighted_games)}G`,
+        barFrac: usagePct,
+        barColor: 'var(--accent)',
+        gamesStr: `${Math.round(usagePct * 100)}%`,
+        conf: h.weighted_games < 5,
+      });
+    }).join('');
+
+    const byWR = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual  = byWR.filter(h => h.weighted_games >= 3);
+    document.getElementById('a-heroes-wr-ans').textContent = qual.length < 2
+      ? 'Need 3+ games per hero to compare win rates.'
+      : `Best: ${qual[0].hero} (${pct(qual[0].win_rate)}). Worst: ${qual[qual.length-1].hero} (${pct(qual[qual.length-1].win_rate)}).`;
+
+    document.getElementById('a-heroes-wr-body').innerHTML = byWR.map(h =>
+      renderARow({ label: h.hero, sub: h.weighted_games >= 3 ? null : '', wr: h.win_rate, gamesStr: Math.round(h.weighted_games)+'G', conf: h.weighted_games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-maps') {
     const data = await api.get('/api/analytics/map-winrates');
-    document.getElementById('t-map-wr').innerHTML = data.map(m =>
-      `<tr><td>${m.map}</td><td>${m.game_mode}</td><td>${m.comp_affinity}</td>
-       <td><span class="${wrClass(m.win_rate)}">${pct(m.win_rate)}</span></td>
-       <td>${m.games} (${m.wins}W)</td>
-       <td>${wrBar(m.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="6" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-maps-body').innerHTML = aEmpty('No map data yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual   = sorted.filter(m => m.games >= 3);
+    document.getElementById('a-maps-ans').textContent = qual.length < 2
+      ? 'Need more variety to compare maps.'
+      : `Best: ${qual[0].map} (${pct(qual[0].win_rate)}). Worst: ${qual[qual.length-1].map} (${pct(qual[qual.length-1].win_rate)}).`;
+    document.getElementById('a-maps-body').innerHTML = sorted.map(m =>
+      renderARow({ label: m.map, sub: m.game_mode, wr: m.win_rate, gamesStr: m.games+'G', conf: m.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-comp') {
     const data = await api.get('/api/analytics/comp-matchups');
-    document.getElementById('t-comp-mu').innerHTML = data.map(r =>
-      `<tr><td>${r.my_comp}</td><td>${r.enemy_comp}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-comp-body').innerHTML = aEmpty('No matchup data yet.'); return; }
+    // Aggregate to enemy-archetype grain
+    const agg = {};
+    data.forEach(r => {
+      if (!agg[r.enemy_comp]) agg[r.enemy_comp] = { wins: 0, games: 0 };
+      agg[r.enemy_comp].wins  += Math.round(r.win_rate * r.games);
+      agg[r.enemy_comp].games += r.games;
+    });
+    const aggArr = Object.entries(agg)
+      .map(([ec, { wins, games }]) => ({ enemy_comp: ec, win_rate: wins / games, games }))
+      .sort((a, b) => a.win_rate - b.win_rate);
+    const worst = aggArr[0];
+    document.getElementById('a-comp-ans').textContent =
+      `Hardest matchup: vs ${worst.enemy_comp} (${pct(worst.win_rate)}, ${worst.games} games).`;
+    document.getElementById('a-comp-body').innerHTML = aggArr.map(r =>
+      renderARow({ label: `vs ${r.enemy_comp}`, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-enemy') {
     const [vhData, hmData] = await Promise.all([
       api.get('/api/analytics/vs-enemy-hero'),
       api.get('/api/analytics/hero-map'),
     ]);
-    document.getElementById('t-vs-hero').innerHTML = vhData.map(r =>
-      `<tr><td>${r.enemy_hero}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="3" class="empty">No data</td></tr>';
-    document.getElementById('t-hero-map').innerHTML = hmData.slice(0,30).map(r =>
-      `<tr><td>${r.hero}</td><td>${r.map}</td><td>${r.comp_affinity}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.weighted_games}</td></tr>`
-    ).join('') || '<tr><td colspan="5" class="empty">No data</td></tr>';
+    if (!vhData.length) {
+      document.getElementById('a-enemy-body').innerHTML = aEmpty('No vs-hero data yet.');
+    } else {
+      const sorted  = [...vhData].sort((a, b) => a.win_rate - b.win_rate);
+      const qual    = sorted.filter(r => r.games >= 3);
+      const nemesis = qual[0] ?? sorted[0];
+      document.getElementById('a-enemy-ans').textContent =
+        `Nemesis: ${nemesis.enemy_hero} — you win ${pct(nemesis.win_rate)} in ${nemesis.games} games.`;
+      document.getElementById('a-enemy-body').innerHTML = sorted.map(r =>
+        renderARow({ label: r.enemy_hero, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+      ).join('');
+    }
+    if (!hmData.length) {
+      document.getElementById('a-heromap-body').innerHTML = aEmpty('No hero × map data yet.');
+    } else {
+      const sorted = [...hmData].sort((a, b) => b.win_rate - a.win_rate).slice(0, 25);
+      const top    = sorted[0];
+      document.getElementById('a-heromap-ans').textContent =
+        `Best combo: ${top.hero} on ${top.map} (${pct(top.win_rate)}, ${Math.round(top.weighted_games)}G).`;
+      document.getElementById('a-heromap-body').innerHTML = sorted.map(r =>
+        renderARow({ label: `${r.hero} on ${r.map}`, sub: r.comp_affinity, wr: r.win_rate, gamesStr: Math.round(r.weighted_games)+'G', conf: r.weighted_games < 5 })
+      ).join('');
+    }
   }
+
   if (tab === 'a-teammates') {
     const data = await api.get('/api/analytics/teammate-winrates');
-    document.getElementById('t-teammates').innerHTML = data.map(r =>
-      `<tr><td>${r.player}</td><td>${r.alias||'—'}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-teammates-body').innerHTML = aEmpty('No consistent teammate data yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.win_rate - a.win_rate);
+    const qual   = sorted.filter(r => r.games >= 3);
+    document.getElementById('a-teammates-ans').textContent = !qual.length
+      ? 'Need 3+ shared games to rank teammates.'
+      : `Best synergy: ${qual[0].player} (${pct(qual[0].win_rate)}, ${qual[0].games} games).`;
+    document.getElementById('a-teammates-body').innerHTML = sorted.map(r =>
+      renderARow({ label: r.player, sub: r.alias || null, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
+
   if (tab === 'a-bans') {
     const data = await api.get('/api/analytics/ban-stats');
-    document.getElementById('t-bans').innerHTML = data.map(r =>
-      `<tr><td>${r.hero}</td><td>${r.ban_count}</td>
-       <td>${pct(r.ban_rate)}</td>
-       <td><span class="${wrClass(r.win_rate_when_banned)}">${pct(r.win_rate_when_banned)}</span></td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No ban data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-bans-body').innerHTML = aEmpty('No ban data recorded yet.'); return; }
+    const sorted = [...data].sort((a, b) => b.ban_count - a.ban_count);
+    const top    = sorted[0];
+    document.getElementById('a-bans-ans').textContent =
+      `Most banned: ${top.hero} (${top.ban_count}×). Your WR with them banned: ${pct(top.win_rate_when_banned)}.`;
+    const maxBans = sorted[0].ban_count;
+    document.getElementById('a-bans-body').innerHTML = sorted.map(r =>
+      renderARow({
+        label: r.hero,
+        sub: `${pct(r.ban_rate)} ban rate`,
+        barFrac: r.ban_count / maxBans,
+        barColor: 'var(--accent)',
+        wr: r.win_rate_when_banned,
+        gamesStr: r.ban_count+'×',
+        extra: `<span class="a-pct ${wrClass(r.win_rate_when_banned)}" style="width:auto;margin-left:4px">${pct(r.win_rate_when_banned)} WR</span>`,
+      })
+    ).join('');
   }
+
   if (tab === 'a-stack') {
     const data = await api.get('/api/analytics/stack-winrates');
-    document.getElementById('t-stack').innerHTML = data.map(r =>
-      `<tr><td>${r.label}</td>
-       <td><span class="${wrClass(r.win_rate)}">${pct(r.win_rate)}</span></td>
-       <td>${r.games}</td>
-       <td>${wrBar(r.win_rate)}</td></tr>`
-    ).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+    if (!data.length) { document.getElementById('a-stack-body').innerHTML = aEmpty('No stack data yet.'); return; }
+    const best = [...data].sort((a, b) => b.win_rate - a.win_rate)[0];
+    const solo = data.find(r => r.label === 'Solo' || r.label === '1');
+    document.getElementById('a-stack-ans').textContent = best.label === (solo?.label)
+      ? `You perform best solo (${pct(best.win_rate)}).`
+      : `Stack of ${best.label} gives your best win rate at ${pct(best.win_rate)}.${solo ? ` Solo: ${pct(solo.win_rate)}.` : ''}`;
+    document.getElementById('a-stack-body').innerHTML = data.map(r =>
+      renderARow({ label: r.label, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
+    ).join('');
   }
 }
 

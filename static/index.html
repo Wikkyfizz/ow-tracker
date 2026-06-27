@@ -193,54 +193,63 @@
     <button class="tab-btn" data-tab="a-stack">Stack Size</button>
   </div>
   <div class="tab-panel active" id="a-heroes">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Hero</th><th>Win Rate</th><th>Weighted Games</th><th></th></tr></thead>
-      <tbody id="t-hero-wr"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Are you a one-trick?</div>
+      <div class="question-answer" id="a-heroes-conc-ans"></div>
+      <div class="a-list" id="a-heroes-conc-body"></div>
+    </div>
+    <div class="question-section">
+      <div class="question-header">Who do you win with?</div>
+      <div class="question-answer" id="a-heroes-wr-ans"></div>
+      <div class="a-list" id="a-heroes-wr-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-maps">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Map</th><th>Mode</th><th>Comp Affinity</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
-      <tbody id="t-map-wr"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Where do you win most?</div>
+      <div class="question-answer" id="a-maps-ans"></div>
+      <div class="a-list" id="a-maps-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-comp">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>My Comp</th><th>vs Enemy Comp</th><th>Win Rate</th><th>Games</th></tr></thead>
-      <tbody id="t-comp-mu"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Which comps beat you?</div>
+      <div class="question-answer" id="a-comp-ans"></div>
+      <div class="a-list" id="a-comp-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-enemy">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-      <div class="card table-wrap">
-        <h2>Win Rate vs Enemy Hero</h2>
-        <table><thead><tr><th>Enemy Hero</th><th>Win Rate</th><th>Games</th></tr></thead>
-        <tbody id="t-vs-hero"></tbody></table>
-      </div>
-      <div class="card table-wrap">
-        <h2>Hero × Map Win Rates</h2>
-        <table><thead><tr><th>Hero</th><th>Map</th><th>Affinity</th><th>Win Rate</th><th>W.Games</th></tr></thead>
-        <tbody id="t-hero-map"></tbody></table>
-      </div>
+    <div class="question-section">
+      <div class="question-header">Who's your nemesis?</div>
+      <div class="question-answer" id="a-enemy-ans"></div>
+      <div class="a-list" id="a-enemy-body"></div>
+    </div>
+    <div class="question-section">
+      <div class="question-header">Which heroes work on which maps?</div>
+      <div class="question-answer" id="a-heromap-ans"></div>
+      <div class="a-list" id="a-heromap-body"></div>
     </div>
   </div>
   <div class="tab-panel" id="a-teammates">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Player</th><th>Alias</th><th>Win Rate</th><th>Games</th></tr></thead>
-      <tbody id="t-teammates"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Who raises your win rate?</div>
+      <div class="question-answer" id="a-teammates-ans"></div>
+      <div class="a-list" id="a-teammates-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-bans">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Hero</th><th>Times Banned</th><th>Ban Rate</th><th>Win Rate When Banned</th></tr></thead>
-      <tbody id="t-bans"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">What are they taking off the table?</div>
+      <div class="question-answer" id="a-bans-ans"></div>
+      <div class="a-list" id="a-bans-body"></div>
+    </div>
   </div>
   <div class="tab-panel" id="a-stack">
-    <div class="card table-wrap"><table>
-      <thead><tr><th>Stack Size</th><th>Win Rate</th><th>Games</th><th></th></tr></thead>
-      <tbody id="t-stack"></tbody>
-    </table></div>
+    <div class="question-section">
+      <div class="question-header">Does playing with friends help?</div>
+      <div class="question-answer" id="a-stack-ans"></div>
+      <div class="a-list" id="a-stack-body"></div>
+    </div>
   </div>
 </div>
 
