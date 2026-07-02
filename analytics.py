@@ -22,6 +22,11 @@ def _load_matches(conn, filters: dict = None) -> list:
             clauses.append("rank_tier = ?"); params.append(filters["rank_tier"])
         if clauses:
             q += " WHERE " + " AND ".join(clauses)
+    # Chronological order is load-bearing: dashboard_summary derives recent form
+    # (last 20) and the current streak from the tail of this list. Without an
+    # explicit ORDER BY, SQLite returns rowid (insertion) order, which diverges
+    # from play order the moment a historical/backfilled game is logged.
+    q += " ORDER BY played_at ASC, id ASC"
     return [dict(r) for r in conn.execute(q, params).fetchall()]
 
 

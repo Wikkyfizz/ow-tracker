@@ -11,6 +11,7 @@ Handles three screenshot types:
 """
 import re
 import pytesseract
+from pytesseract import Output
 from PIL import Image, ImageFilter, ImageEnhance
 from datetime import datetime
 import numpy as np
@@ -342,24 +343,91 @@ def _parse_datetime(raw: str) -> str | None:
 
 # ── TEAM tab extraction ───────────────────────────────────────────────────────
 
-def extract_all_rows(img: Image.Image) -> dict:
+def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
+    """
+    Read every stat number for a whole 5-row team block in ONE Tesseract pass.
+
+    OCRs the entire stat block (elims → mitigation, spanning all rows) with
+    word-level boxes, then bins each detected digit-word by its y-centre (→ row)
+    and x-centre (→ column). Returns one {stat: int | None} dict per row; a None
+    means that cell was not confidently read and the caller should fall back to
+    the slower multi-strategy per-cell _ocr_number.
+
+    This collapses the previous 30-cells × up-to-7-passes-each approach (up to
+    ~210 subprocess spawns per team) into a single spawn for the common case.
+    """
+    empty = [{s: None for s in STAT_COLS} for _ in row_ys]
+    x1 = STAT_COLS["elims"][0]
+    x2 = STAT_COLS["mitigation"][1]
+    y_top = min(row_ys) - ROW_HALF_H
+    y_bot = max(row_ys) + ROW_HALF_H
+    block = img.crop((x1, y_top, x2, y_bot))
+    cfg = "--psm 6 -c tessedit_char_whitelist=0123456789,"
+    try:
+        data = pytesseract.image_to_data(_preprocess(block), config=cfg, output_type=Output.DICT)
+    except Exception:
+        return empty
+
+    col_centres = {s: (cl + cr) / 2.0 for s, (cl, cr) in STAT_COLS.items()}
+    buckets = [{s: [] for s in STAT_COLS} for _ in row_ys]
+    for i in range(len(data["text"])):
+        digits = (data["text"][i] or "").strip().replace(",", "")
+        if not digits.isdigit():
+            continue
+        cx = x1 + data["left"][i] + data["width"][i] / 2.0
+        cy = y_top + data["top"][i] + data["height"][i] / 2.0
+        ri = min(range(len(row_ys)), key=lambda k: abs(row_ys[k] - cy))
+        if abs(row_ys[ri] - cy) > ROW_HALF_H:   # not inside any row band — drop noise
+            continue
+        col = next((s for s, (cl, cr) in STAT_COLS.items() if cl <= cx < cr), None)
+        if col is None:  # landed in a gutter between columns — snap to nearest
+            col = min(col_centres, key=lambda s: abs(col_centres[s] - cx))
+        buckets[ri][col].append((data["left"][i], digits))
+
+    out = []
+    for row_buckets in buckets:
+        row = {}
+        for s, words in row_buckets.items():
+            if not words:
+                row[s] = None
+            else:
+                words.sort()  # left-to-right, so comma-split numbers rejoin in order
+                row[s] = int("".join(d for _, d in words))
+        out.append(row)
+    return out
+
+
+def extract_all_rows(img: Image.Image, read_names: bool = True) -> dict:
     """
     Extract stats for all 10 players from a TEAM tab screenshot.
     Returns {"my_team": [...], "enemy_team": [...]}.
     Each row: {name, elims, assists, deaths, damage, healing, mitigation}.
+
+    Fast path: one Tesseract pass per 5-row team block bins all numbers by row
+    and column. Only cells that come back empty (e.g. dim "0", the gold
+    own-player row) fall back to the multi-strategy per-cell _ocr_number.
+
+    read_names=False skips per-row name OCR entirely — the scoreboard renders
+    the own player's name as a stylised banner and most others as CJK text, both
+    of which Tesseract reads as "", so name OCR is ~2s of dead work unless there
+    are tracked players to match against.
     """
-    my_team, enemy_team = [], []
-    for row_y in MY_TEAM_ROW_Y:
-        row = {s: _ocr_number(img, (xl, row_y - ROW_HALF_H, xr, row_y + ROW_HALF_H))
-               for s, (xl, xr) in STAT_COLS.items()}
-        row["name"] = _ocr_line(img, (NAME_X_START, row_y - ROW_HALF_H, NAME_X_END, row_y + ROW_HALF_H))
-        my_team.append(row)
-    for row_y in ENEMY_TEAM_ROW_Y:
-        row = {s: _ocr_number(img, (xl, row_y - ROW_HALF_H, xr, row_y + ROW_HALF_H))
-               for s, (xl, xr) in STAT_COLS.items()}
-        row["name"] = _ocr_line(img, (NAME_X_START, row_y - ROW_HALF_H, NAME_X_END, row_y + ROW_HALF_H))
-        enemy_team.append(row)
-    return {"my_team": my_team, "enemy_team": enemy_team}
+    def _read_rows(row_ys):
+        fast_rows = _ocr_team_numbers_fast(img, row_ys)
+        rows = []
+        for row_y, fast in zip(row_ys, fast_rows):
+            row = {}
+            for s, (xl, xr) in STAT_COLS.items():
+                v = fast.get(s)
+                if v is None:
+                    v = _ocr_number(img, (xl, row_y - ROW_HALF_H, xr, row_y + ROW_HALF_H))
+                row[s] = v
+            row["name"] = (_ocr_line(img, (NAME_X_START, row_y - ROW_HALF_H, NAME_X_END, row_y + ROW_HALF_H))
+                           if read_names else "")
+            rows.append(row)
+        return rows
+
+    return {"my_team": _read_rows(MY_TEAM_ROW_Y), "enemy_team": _read_rows(ENEMY_TEAM_ROW_Y)}
 
 
 def find_my_row(rows: list[dict], username: str) -> dict | None:

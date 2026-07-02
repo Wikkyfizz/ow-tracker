@@ -85,6 +85,22 @@ Examples:
 
 Tab detection order: PERSONAL first (its region overlaps SUMMARY), then SUMMARY, then TEAM.
 
+### `my_heroes` vs `my_team_heroes` (data model — important)
+
+- **`my_heroes`** = the hero(es) *the user* played, playtime-weighted (`pct`). This is the ONLY field that drives hero win-rate analytics. Never put teammates here.
+- **`my_team_heroes`** = the user's full 5-hero team comp. Used *only* to derive `my_comp`. Not counted toward the user's hero record.
+- **`enemy_heroes`** = the enemy's full 5-hero comp (drives `enemy_comp` + vs-enemy analytics).
+
+The TEAM scoreboard gives the full team comp but **cannot identify which slot is the user** — every name OCRs to `""` (stylised own-name banner + CJK teammate names). So `_parse_team_tab` puts the 5 detected my-team heroes in `my_team_heroes` and leaves `my_heroes` **empty**; the user picks their played hero explicitly in the Queue review. (Auto-filling `my_heroes` would require a **new SUMMARY-tab portrait template library** — the SUMMARY "HEROES PLAYED" panel shows the user's heroes + exact pcts, but its round thumbnails don't match the rectangular scoreboard templates, and its hero-name text is unreadable by Tesseract (styled font). This is the natural next feature.)
+
+### OCR performance (TEAM stat grid)
+
+`ocr._ocr_team_numbers_fast()` reads all 30 numbers of a 5-row team block in **one** Tesseract `image_to_data` pass, binning digit-words by row (y) and column (x). Only empty cells fall back to the slow multi-strategy `_ocr_number`. ~6× faster than the old per-cell approach *and* more accurate (reads dim "0"s and comma numbers the per-cell path missed). `extract_all_rows(img, read_names=False)` skips the ~2s of per-row name OCR — the pipeline passes `read_names=bool(tracked_players)` since names are only useful for tracked-player matching.
+
+### Timestamps
+
+All timestamps are **naive LOCAL time** (OCR reads the game's local clock; the server stamps `datetime.now()`; the frontend sends the `datetime-local` value as-is). Do not reintroduce `utcnow()` / `toISOString()` — mixing frames breaks session idle-close math and chronological ordering.
+
 Result is written to `inbox_queue.json` for Queue UI review.
 
 ---

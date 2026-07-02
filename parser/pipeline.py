@@ -55,6 +55,7 @@ def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
         "played_at":     data.get("played_at"),
         "game_mode":     data.get("game_mode", ""),
         "my_heroes":     [],
+        "my_team_heroes": [],
         "enemy_heroes":  [],
         "elims":         None,
         "deaths":        None,
@@ -81,6 +82,7 @@ def _parse_personal_tab(img: Image.Image, warnings: list) -> dict:
         "played_at":     None,
         "game_mode":     "",
         "my_heroes":     [{"hero": data.get("hero", ""), "pct": 100}] if data.get("hero") else [],
+        "my_team_heroes": [],
         "enemy_heroes":  [],
         "elims":         None,
         "deaths":        None,
@@ -99,7 +101,9 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     from parser.ocr import extract_all_rows, find_my_row, extract_tracked_players
     from parser.icons import extract_heroes
 
-    all_rows   = extract_all_rows(img)
+    # Name OCR is only useful for matching tracked players (own name + CJK names
+    # otherwise read as ""). Skip it entirely when there's nobody to match.
+    all_rows   = extract_all_rows(img, read_names=bool(tracked_players))
     my_rows    = all_rows["my_team"]
     enemy_rows = all_rows["enemy_team"]
 
@@ -117,7 +121,13 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
 
     raw_my    = icon_result.get("my_heroes",    [])
     raw_enemy = icon_result.get("enemy_heroes", [])
-    my_heroes = [
+    # The scoreboard gives us the FULL team comp (all 5 slots), but it can't tell
+    # which slot is the user: names OCR as blank (stylised nameplate + CJK names),
+    # so we cannot attribute a specific slot to "me". The 5 my-team heroes are the
+    # team comp (→ my_team_heroes, used only to derive my_comp); the hero(es) the
+    # user actually played are picked explicitly in the review step. This avoids
+    # crediting teammates' heroes to the user's own hero win-rates.
+    my_team_heroes = [
         {"hero": h["hero"], "confidence": h.get("confidence", 1.0), "role": h.get("role", ""), "row": i}
         for i, h in enumerate(raw_my)
     ]
@@ -128,6 +138,7 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     confidence   = icon_result.get("confidence", 0.0)
 
     warnings.append("Map and outcome not on TEAM tab — confirm after parsing SUMMARY tab screenshot")
+    warnings.append("Select the hero(es) YOU played — the detected team comp is shown for reference only")
 
     return {
         "tab_type":      "TEAM",
@@ -136,7 +147,8 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
         "game_length_s": None,
         "played_at":     None,
         "game_mode":     "",
-        "my_heroes":     my_heroes,
+        "my_heroes":     [],
+        "my_team_heroes": my_team_heroes,
         "enemy_heroes":  enemy_heroes,
         "elims":         my_row.get("elims")      if my_row else None,
         "deaths":        my_row.get("deaths")     if my_row else None,
