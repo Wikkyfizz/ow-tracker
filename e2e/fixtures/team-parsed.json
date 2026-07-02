@@ -1,0 +1,36 @@
+{
+  "tab_type": "TEAM",
+  "map": "",
+  "outcome": "",
+  "game_length_s": null,
+  "played_at": null,
+  "game_mode": "",
+  "my_heroes": [],
+  "my_team_heroes": [
+    { "hero": "Winston", "confidence": 1.0,  "role": "tank",    "row": 0 },
+    { "hero": "Genji",   "confidence": 1.0,  "role": "dps",     "row": 1 },
+    { "hero": "Tracer",  "confidence": 0.98, "role": "dps",     "row": 2 },
+    { "hero": "Lucio",   "confidence": 0.9,  "role": "support", "row": 3 },
+    { "hero": "Kiriko",  "confidence": 0.97, "role": "support", "row": 4 }
+  ],
+  "enemy_heroes": [
+    { "hero": "Reinhardt", "confidence": 1.0,  "role": "tank",    "row": 0 },
+    { "hero": "Reaper",    "confidence": 1.0,  "role": "dps",     "row": 1 },
+    { "hero": "Mei",       "confidence": 0.96, "role": "dps",     "row": 2 },
+    { "hero": "Ana",       "confidence": 0.95, "role": "support", "row": 3 },
+    { "hero": "Brigitte",  "confidence": 0.99, "role": "support", "row": 4 }
+  ],
+  "elims": 25,
+  "deaths": 8,
+  "assists": 4,
+  "damage": 16254,
+  "healing": 287,
+  "mitigation": 10540,
+  "teammates": [],
+  "stack_size": 1,
+  "confidence": 0.9,
+  "warnings": [
+    "Map and outcome not on TEAM tab — confirm after parsing SUMMARY tab screenshot",
+    "Select the hero(es) YOU played — the detected team comp is shown for reference only"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "ow-tracker-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pretest": "node seed.mjs",
+    "test": "playwright test",
+    "pretest:headed": "node seed.mjs",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
