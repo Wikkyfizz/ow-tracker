@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 import shutil
@@ -15,8 +16,9 @@ import analytics
 from models import (MatchCreate, MatchUpdate, MapUpdate, TrackedPlayer, Settings, ParsedMatch,
                     SessionCreate, SessionUpdate)
 
-SETTINGS_PATH = Path(__file__).parent / "settings.json"
-QUEUE_PATH = Path(__file__).parent / "inbox_queue.json"
+# OW_TRACKER_SETTINGS / OW_TRACKER_QUEUE let the e2e harness isolate state (see e2e/).
+SETTINGS_PATH = Path(os.environ.get("OW_TRACKER_SETTINGS") or (Path(__file__).parent / "settings.json"))
+QUEUE_PATH = Path(os.environ.get("OW_TRACKER_QUEUE") or (Path(__file__).parent / "inbox_queue.json"))
 _queue_lock = threading.Lock()
 _watcher_thread = None
 _observer = None
@@ -133,7 +135,7 @@ def _handle_new_screenshot(path: str):
             "filename": Path(path).name,
             "path": path,
             "parsed": result,
-            "added_at": datetime.utcnow().isoformat(),
+            "added_at": datetime.now().isoformat(),
         })
     except Exception as e:
         print(f"[parser] error on {path}: {e}")
@@ -142,7 +144,7 @@ def _handle_new_screenshot(path: str):
             "path": path,
             "parsed": {},
             "error": str(e),
-            "added_at": datetime.utcnow().isoformat(),
+            "added_at": datetime.now().isoformat(),
         })
 
 
@@ -181,9 +183,12 @@ def create_match(body: MatchCreate):
     with db.get_conn() as conn:
         archetypes = db.hero_archetypes(conn)
         roles = db.hero_roles(conn)
-        my_hero_names = [e.hero for e in body.my_heroes]
+        # Comp is a property of the *whole team*, so derive it from the full team
+        # comp when we have it (TEAM-tab parse); fall back to my_heroes for manual
+        # entry where only the played heroes are known.
+        my_comp_names = [e.hero for e in (body.my_team_heroes or body.my_heroes)]
         enemy_hero_names = [e.hero for e in body.enemy_heroes]
-        my_comp = body.my_comp or db.derive_comp(my_hero_names, archetypes, roles)
+        my_comp = body.my_comp or db.derive_comp(my_comp_names, archetypes, roles)
         enemy_comp = body.enemy_comp or db.derive_comp(enemy_hero_names, archetypes, roles)
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
@@ -193,7 +198,10 @@ def create_match(body: MatchCreate):
         if session_id is None and not body.is_historical:
             session_id = _resolve_session(conn)
 
-        played_at = body.played_at or datetime.utcnow()
+        # Timestamps are naive LOCAL time throughout (OCR reads the game's local
+        # clock; sessions stamp datetime.now()) so session idle math and ordering
+        # stay in one frame. Do not mix in UTC here.
+        played_at = body.played_at or datetime.now()
 
         cur = conn.execute(
             """INSERT INTO matches
@@ -203,7 +211,7 @@ def create_match(body: MatchCreate):
                 game_length_s, session_id, notes, tags, bans, teammates,
                 stack_size, screenshot_path, data_source,
                 practiced, practice_notes, is_historical)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 played_at.isoformat(),
                 body.map, body.outcome,
@@ -256,7 +264,8 @@ def update_match(match_id: int, body: MatchUpdate):
             raise HTTPException(404, "Match not found")
         archetypes = db.hero_archetypes(conn)
         roles = db.hero_roles(conn)
-        my_comp = body.my_comp or db.derive_comp([e.hero for e in body.my_heroes], archetypes, roles)
+        my_comp_names = [e.hero for e in (body.my_team_heroes or body.my_heroes)]
+        my_comp = body.my_comp or db.derive_comp(my_comp_names, archetypes, roles)
         enemy_comp = body.enemy_comp or db.derive_comp([e.hero for e in body.enemy_heroes], archetypes, roles)
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
@@ -505,7 +514,7 @@ def update_settings(body: Settings):
 
 def _auto_close_sessions(conn):
     """Auto-close open sessions idle >1hr; scrap empty sessions idle >1hr."""
-    now = datetime.utcnow()
+    now = datetime.now()
     open_sessions = conn.execute(
         "SELECT id, started_at FROM sessions WHERE ended_at IS NULL AND started_at IS NOT NULL"
     ).fetchall()
@@ -563,8 +572,8 @@ def create_session(body: SessionCreate):
         ).fetchone()
         if existing:
             return {"id": existing["id"]}
-        now = datetime.utcnow().isoformat()
-        today = datetime.utcnow().date().isoformat()
+        now = datetime.now().isoformat()
+        today = datetime.now().date().isoformat()
         cur = conn.execute(
             "INSERT INTO sessions (date, started_at, goal, focus_mode) VALUES (?,?,?,?)",
             (today, now, body.goal, int(body.focus_mode))
@@ -578,7 +587,7 @@ def end_session(session_id: int):
         if not conn.execute("SELECT id FROM sessions WHERE id=?", (session_id,)).fetchone():
             raise HTTPException(404, "Session not found")
         conn.execute("UPDATE sessions SET ended_at=? WHERE id=?",
-                     (datetime.utcnow().isoformat(), session_id))
+                     (datetime.now().isoformat(), session_id))
     return {"ok": True}
 
 
@@ -636,7 +645,7 @@ async def fetch_baseline():
     # heroes is a dict: {"genji": {games_played, games_won, winrate, time_played, ...}, ...}
     heroes_dict = stats.get("heroes", {})
     total_time = sum(h.get("time_played", 0) for h in heroes_dict.values()) or 1
-    now = datetime.utcnow().isoformat()
+    now = datetime.now().isoformat()
 
     with db.get_conn() as conn:
         conn.execute("DELETE FROM career_baseline")

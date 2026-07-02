@@ -5,7 +5,9 @@ from datetime import datetime
 
 class HeroEntry(BaseModel):
     hero: str
-    pct: int = Field(ge=25, le=100, description="25 / 50 / 75 / 100")
+    # Manual entry cycles 25/50/75/100, but SUMMARY-tab playtime OCR yields exact
+    # percentages (e.g. 47/41/12), so accept any 1–100.
+    pct: int = Field(ge=1, le=100, description="playtime percent (1–100)")
 
 
 class SessionCreate(BaseModel):
@@ -32,8 +34,9 @@ class MatchCreate(BaseModel):
     played_at: Optional[datetime] = None
     map: str
     outcome: str  # Win / Loss / Draw
-    my_heroes: list[HeroEntry] = []
-    enemy_heroes: list[HeroEntry] = []
+    my_heroes: list[HeroEntry] = []       # heroes *I* played (drives hero win-rates)
+    my_team_heroes: list[HeroEntry] = []  # my full team's comp (drives my_comp only)
+    enemy_heroes: list[HeroEntry] = []    # enemy team's full comp
     my_comp: str = ""
     enemy_comp: str = ""
     rank_tier: str = ""

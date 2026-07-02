@@ -17,6 +17,7 @@ let pendingSessionExpand = null;
 // Modal state
 let modalIsHistorical = false;
 let mModalMyHeroes = [];
+let mModalMyTeamHeroes = [];   // full my-team comp (drives my_comp); no chip UI, carried through
 let mModalEnemyHeroes = [];
 let mModalBans = [];
 let practiceSelection = null;
@@ -580,9 +581,10 @@ function openGameModal(prefill, isHistorical) {
   const banner = document.getElementById('modal-ocr-banner');
   banner.style.display = 'none';
 
-  mModalMyHeroes.length    = 0;
-  mModalEnemyHeroes.length = 0;
-  mModalBans.length        = 0;
+  mModalMyHeroes.length     = 0;
+  mModalMyTeamHeroes.length = 0;
+  mModalEnemyHeroes.length  = 0;
+  mModalBans.length         = 0;
 
   // Apply prefill
   if (prefill) {
@@ -596,8 +598,9 @@ function openGameModal(prefill, isHistorical) {
     if (prefill.damage     != null) document.getElementById('m-damage').value      = prefill.damage;
     if (prefill.healing    != null) document.getElementById('m-healing').value     = prefill.healing;
     if (prefill.mitigation != null) document.getElementById('m-mitigation').value  = prefill.mitigation;
-    (prefill.my_heroes    || []).forEach(h => mModalMyHeroes.push(h));
-    (prefill.enemy_heroes || []).forEach(h => mModalEnemyHeroes.push(h));
+    (prefill.my_heroes      || []).forEach(h => mModalMyHeroes.push(h));
+    (prefill.my_team_heroes || []).forEach(h => mModalMyTeamHeroes.push(h));
+    (prefill.enemy_heroes   || []).forEach(h => mModalEnemyHeroes.push(h));
 
     if ((prefill.warnings || []).length) {
       banner.textContent    = 'OCR: ' + prefill.warnings.join('; ');
@@ -664,8 +667,9 @@ async function saveModalGame() {
 
   const payload = {
     map, outcome,
-    my_heroes:     mModalMyHeroes,
-    enemy_heroes:  mModalEnemyHeroes,
+    my_heroes:      mModalMyHeroes,
+    my_team_heroes: mModalMyTeamHeroes,
+    enemy_heroes:   mModalEnemyHeroes,
     bans:          mModalBans,
     rank_tier:     rankTier || '',
     rank_division: rankDiv  ? parseInt(rankDiv)     : null,
@@ -683,7 +687,10 @@ async function saveModalGame() {
     practiced:     (activeSession && !modalIsHistorical) ? practiceSelection : null,
     practice_notes: document.getElementById('m-practice-notes').value,
   };
-  if (datetimeVal) payload.played_at = new Date(datetimeVal).toISOString();
+  // Send the local wall-clock time as-is (naive). The whole app stores naive
+  // local timestamps (OCR reads the game's local clock; the server stamps
+  // datetime.now()); converting to UTC here would shift games by the tz offset.
+  if (datetimeVal) payload.played_at = datetimeVal.length === 16 ? datetimeVal + ':00' : datetimeVal;
   if (activeSession && !modalIsHistorical) payload.session_id = activeSession.id;
 
   const result = await api.post('/api/matches', payload);
@@ -1318,10 +1325,10 @@ async function loadQueue() {
       const stats = ['elims','assists','deaths','damage','healing','mitigation']
         .map(k => p[k] != null ? `${k[0].toUpperCase() + k.slice(1, 3)}: <strong>${p[k]}</strong>` : null)
         .filter(Boolean).join(' &nbsp;·&nbsp; ');
-      const heroList = (p.my_heroes || []).map(h => (typeof h === 'string' ? h : h.hero) || '').filter(Boolean).join(', ') || '—';
+      const heroList = (p.my_team_heroes || p.my_heroes || []).map(h => (typeof h === 'string' ? h : h.hero) || '').filter(Boolean).join(', ') || '—';
       detailHtml = `<div class="queue-item-detail">
         ${stats || 'No stats parsed'}
-        <br><span style="font-size:12px;color:var(--dim)">My heroes: ${heroList}</span>
+        <br><span style="font-size:12px;color:var(--dim)">My team: ${heroList}</span>
       </div>`;
       teamCompHtml = renderTeamCompPanel(item);
     } else if (tabType === 'PERSONAL') {
@@ -1361,9 +1368,14 @@ async function confirmQueueItem(idx) {
     return (name && !name.startsWith('Unknown')) ? { hero: name, pct: 100 } : null;
   };
   if (state) {
-    p.my_heroes    = state.my.map(s => toModalHero(s)).filter(Boolean);
-    p.enemy_heroes = state.enemy.map(s => toModalHero(s)).filter(Boolean);
+    // TEAM tab: the corrected 5-hero panel is the team comp, not "heroes I played".
+    // Route it to my_team_heroes (drives my_comp); leave my_heroes empty so the
+    // user explicitly picks the hero(es) they played in the modal.
+    p.my_team_heroes = state.my.map(s => toModalHero(s)).filter(Boolean);
+    p.enemy_heroes   = state.enemy.map(s => toModalHero(s)).filter(Boolean);
+    p.my_heroes      = [];
   } else {
+    // SUMMARY / PERSONAL: my_heroes is already "heroes I played" (or empty).
     p.my_heroes    = (p.my_heroes    || []).map(toModalHero).filter(Boolean);
     p.enemy_heroes = (p.enemy_heroes || []).map(toModalHero).filter(Boolean);
   }
@@ -1384,8 +1396,10 @@ function initHeroState(item) {
     corrected:  false,
   });
   queueHeroState[fn] = {
-    my:    (p.my_heroes    || []).map(toSlot),
-    enemy: (p.enemy_heroes || []).map(toSlot),
+    // "my" panel = the full detected team comp (my_team_heroes). Fall back to
+    // my_heroes for older queue items parsed before the field existed.
+    my:    (p.my_team_heroes || p.my_heroes || []).map(toSlot),
+    enemy: (p.enemy_heroes   || []).map(toSlot),
   };
 }
 

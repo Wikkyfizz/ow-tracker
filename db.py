@@ -1,9 +1,12 @@
 import csv
+import os
 import sqlite3
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "ow_tracker.db"
+# OW_TRACKER_DB lets the e2e harness point at a throwaway DB (see e2e/).
+DB_PATH = Path(os.environ.get("OW_TRACKER_DB") or (Path(__file__).parent / "ow_tracker.db"))
 DATA_DIR = Path(__file__).parent / "data"
 ROLES = ("Tank", "Damage", "Support")
 
@@ -157,11 +160,27 @@ CREATE TABLE IF NOT EXISTS player_rank (
 """
 
 
+@contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    """Context manager yielding a connection that is committed on success,
+    rolled back on error, and ALWAYS closed. (A bare sqlite3 connection used as
+    a context manager commits/rolls back but never closes — leaking a handle per
+    call in a long-running server.) WAL mode lets the watcher thread and API
+    requests read/write concurrently without 'database is locked' errors.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    conn.execute("PRAGMA busy_timeout = 5000")  # wait for locks instead of raising SQLITE_BUSY
+    conn.execute("PRAGMA journal_mode = WAL")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
