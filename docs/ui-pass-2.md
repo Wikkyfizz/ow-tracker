@@ -1,6 +1,6 @@
 # UI Pass 2 — Session cards + screenshot viewer
 
-**Status: DONE (2026-07-05), e2e green (2/2). Uncommitted — awaiting Brandon's go-ahead to commit.**
+**Status: DONE (2026-07-05), e2e green (2/2). Committed: `a250630` on `fix/data-integrity-and-perf`.**
 Branch: `fix/data-integrity-and-perf` (built on top of the e2e-harness commit `5106237`).
 Source of scope: vault memory `Personal-Vault/wiki/meta/memory/project_ow-tracker-ui-backlog.md`
 (items 2 and 3; item 1 — hero icons — deliberately out of scope, needs an asset pipeline).
@@ -93,4 +93,4 @@ processed games' screenshots end up in the discard pile.
       10× portrait-crop 500s; full-size black image crops cleanly); spec extended
 - [x] e2e suite green (2/2 passed, 2026-07-05; visual screenshot reviewed)
 - [x] CLAUDE.md "Active work" + vault `project_ow-tracker-ui-backlog.md` updated
-- [ ] Committed (awaiting Brandon's go-ahead)
+- [x] Committed (`a250630`)
