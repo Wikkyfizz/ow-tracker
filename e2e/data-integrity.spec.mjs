@@ -47,6 +47,18 @@ test('TEAM parse: comp panel holds full team, my_heroes stays clean through save
   await page.click('button:has-text("Confirm & Edit")');
   await expect(page.locator('#game-modal')).toBeVisible();
 
+  // Source-screenshot viewer: offered for queue items, collapsed by default,
+  // image loads on expand (backlog item 3).
+  const shotSection = page.locator('#modal-screenshot-section');
+  await expect(shotSection).toBeVisible();
+  await expect(page.locator('#modal-screenshot-body')).toBeHidden();
+  const imgResponse = page.waitForResponse(r => r.url().includes('/image') && r.ok());
+  await page.click('#modal-screenshot-toggle');
+  await expect(page.locator('#modal-screenshot-img')).toBeVisible();
+  await imgResponse;
+  await page.click('#modal-screenshot-toggle'); // collapse again before filling the form
+  await expect(page.locator('#modal-screenshot-body')).toBeHidden();
+
   // CORE ASSERTION 1: "My Heroes" starts EMPTY — no teammate is pre-selected.
   await expect(page.locator('#m-my-heroes .hero-chip.selected')).toHaveCount(0);
 
@@ -69,6 +81,49 @@ test('TEAM parse: comp panel holds full team, my_heroes stays clean through save
   expect(myHeroes).toEqual([PLAYED]);                       // only what I played
   for (const mate of TEAMMATES) expect(myHeroes).not.toContain(mate);  // no teammate pollution
   expect(match.my_comp).toBe('Dive');                       // derived from the DIVE team, not Lucio(Brawl)
+
+  // screenshot_path persisted on the match (was silently dropped before)
+  expect(match.screenshot_path).toContain('e2e-team.png');
+
+  // Queue item consumed by the save; screenshot archived to processed/ (NOT discarded/)
+  const q = await (await request.get('/api/queue')).json();
+  expect(q.queue).toEqual([]);
+  expect(fs.existsSync(path.join(__dirname, '.tmp', 'inbox', 'processed', 'e2e-team.png'))).toBe(true);
+  expect(fs.existsSync(path.join(__dirname, '.tmp', 'inbox', 'discarded', 'e2e-team.png'))).toBe(false);
+
+  expect(jsErrors, `JS errors during flow:\n${jsErrors.join('\n')}`).toEqual([]);
+});
+
+test('Sessions page: history card renders labeled full-width stats', async ({ page, request }) => {
+  const jsErrors = [];
+  attachErrorGuards(page, jsErrors);
+
+  // Create a completed session with one win via the API
+  const sess = await (await request.post('/api/sessions', { data: { goal: 'e2e layout check' } })).json();
+  await request.post('/api/matches', { data: {
+    map: 'Ilios', outcome: 'Win', my_heroes: [{ hero: 'Tracer', pct: 100 }],
+    my_team_heroes: [], enemy_heroes: [], bans: [], data_source: 'manual',
+    session_id: sess.id,
+  }});
+  await request.post(`/api/sessions/${sess.id}/end`);
+
+  await page.goto('/');
+  await page.click('.nav-btn[data-page="sessions"]');
+
+  const card = page.locator('.sess-hist-card').first();
+  await expect(card).toBeVisible();
+
+  // Four labeled stat cells spread across the header
+  const labels = card.locator('.sess-hist-stat .l');
+  await expect(labels).toHaveText(['Record', 'Win rate', 'Games', 'Duration']);
+  await expect(card.locator('.sess-hist-stat .v').nth(0)).toContainText('1W');
+  await expect(card.locator('.sess-hist-stat .v').nth(1)).toContainText('100');
+  await expect(card.locator('.sess-hist-stat .v').nth(2)).toHaveText('1');
+
+  // Expand/collapse still works after the layout rework
+  await card.locator('.sess-hist-header').click();
+  await expect(card).toHaveClass(/expanded/);
+  await expect(card.locator('.sess-hist-body')).toBeVisible();
 
   expect(jsErrors, `JS errors during flow:\n${jsErrors.join('\n')}`).toEqual([]);
 });

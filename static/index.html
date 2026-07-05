@@ -341,6 +341,16 @@
     <div id="modal-ocr-banner" class="alert alert-info modal-ocr-banner" style="display:none;margin:12px 20px 0"></div>
 
     <div class="modal-body">
+      <!-- Source screenshot spot-check: only shown when opened from a queue item -->
+      <div id="modal-screenshot-section" style="display:none">
+        <button type="button" class="modal-screenshot-toggle" id="modal-screenshot-toggle">
+          📷 Source screenshot <span class="modal-screenshot-chevron">▼</span>
+        </button>
+        <div class="modal-screenshot-body" id="modal-screenshot-body">
+          <img id="modal-screenshot-img" alt="Source screenshot" title="Click to open full size in a new tab">
+        </div>
+      </div>
+
       <div class="form-grid">
         <div class="form-group" id="mf-map">
           <label>Map *</label>

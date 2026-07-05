@@ -139,10 +139,18 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ---
 
-## Active work as of 2026-06-27
+## Active work as of 2026-07-05
 
-- Branch: `feature/ocr-calibration` (not yet committed — pending this session)
+- Branch: `fix/data-integrity-and-perf` — has UI Pass 2 **uncommitted** in the
+  working tree (see `docs/ui-pass-2.md`): session-card grid layout, source-screenshot
+  viewer in the game modal (`GET /api/queue/{filename}/image`), and a fix so
+  `screenshot_path` persists on match rows and queue screenshots archive to
+  `processed/` (not `discarded/`) on save.
+- e2e: `cd e2e && npm test` (2 specs, green 2026-07-05). `seed.mjs` generates its
+  own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
+  save/discard flows MOVE the queue item's file.
 - Template matching 93% accuracy on confirmed screenshot set (28/30)
 - Design doc for Queue hero correction panel: `docs/hero-detection-design.md`
 - PERSONAL tab parsing: stub only — major future feature, do not implement yet
-- UI overhaul design: `docs/ui-overhaul.md` — decisions pending, do not implement yet
+- Remaining UI backlog: hero icons (needs asset pipeline) — see vault memory
+  `project_ow-tracker-ui-backlog.md`

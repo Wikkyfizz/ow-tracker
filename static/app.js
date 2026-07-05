@@ -22,6 +22,7 @@ let mModalEnemyHeroes = [];
 let mModalBans = [];
 let practiceSelection = null;
 let pendingQueueFilename = null;
+let pendingScreenshotPath = null;
 
 // Queue hero correction state — keyed by filename; survives queue reloads
 const queueHeroState = {};
@@ -418,17 +419,30 @@ function renderSessionHistCard(s) {
     const secs = Math.floor((new Date(s.ended_at) - new Date(s.started_at)) / 1000);
     dur = formatDuration(secs);
   }
-  const metaParts = [dateStr, dur, games + 'G'].filter(Boolean);
-  const wrHtml = wr != null ? `<span class="sess-hist-wr ${wrClass(wr)}">${pct(wr)}</span>` : '';
+  const wrVal = wr != null ? `<span class="${wrClass(wr)}">${pct(wr)}</span>` : '<span style="color:var(--dim)">—</span>';
 
   return `<div class="sess-hist-card" id="shc-${s.id}">
     <div class="sess-hist-header">
-      <span class="sess-hist-title">${title}</span>
-      <span class="sess-hist-wl">
-        <span class="wr-good">${wins}W</span><span style="color:var(--dim)"> – </span><span class="wr-bad">${losses}L</span>
+      <span class="sess-hist-id">
+        <span class="sess-hist-title">${title}</span>
+        <span class="sess-hist-sub">${dateStr}</span>
       </span>
-      ${wrHtml}
-      <span class="sess-hist-meta">${metaParts.join(' · ')}</span>
+      <span class="sess-hist-stat">
+        <span class="v"><span class="wr-good">${wins}W</span><span style="color:var(--dim)"> – </span><span class="wr-bad">${losses}L</span></span>
+        <span class="l">Record</span>
+      </span>
+      <span class="sess-hist-stat">
+        <span class="v">${wrVal}</span>
+        <span class="l">Win rate</span>
+      </span>
+      <span class="sess-hist-stat">
+        <span class="v">${games}</span>
+        <span class="l">Games</span>
+      </span>
+      <span class="sess-hist-stat">
+        <span class="v">${dur || '—'}</span>
+        <span class="l">Duration</span>
+      </span>
       <span class="sess-hist-chevron">▼</span>
     </div>
     <div class="sess-hist-body" id="shb-${s.id}">
@@ -559,7 +573,9 @@ document.getElementById('sess-add-game-btn').addEventListener('click', () => {
 function openGameModal(prefill, isHistorical) {
   modalIsHistorical  = isHistorical;
   practiceSelection  = null;
-  pendingQueueFilename = prefill ? prefill._queueFilename || null : null;
+  pendingQueueFilename  = prefill ? prefill._queueFilename  || null : null;
+  pendingScreenshotPath = prefill ? prefill._screenshotPath || null : null;
+  resetModalScreenshotViewer();
 
   // Reset form
   document.getElementById('m-map').value          = '';
@@ -634,6 +650,34 @@ function closeGameModal() {
   document.getElementById('game-modal').style.display = 'none';
 }
 
+// ── Modal source-screenshot viewer ───────────────────────────────────────────
+function modalScreenshotUrl() {
+  return `/api/queue/${encodeURIComponent(pendingQueueFilename)}/image`;
+}
+
+function resetModalScreenshotViewer() {
+  const section = document.getElementById('modal-screenshot-section');
+  const img     = document.getElementById('modal-screenshot-img');
+  section.classList.remove('open');
+  img.removeAttribute('src');
+  // Only offer the viewer when the game came from a queued screenshot
+  section.style.display = pendingQueueFilename ? 'block' : 'none';
+}
+
+document.getElementById('modal-screenshot-toggle').addEventListener('click', () => {
+  const section = document.getElementById('modal-screenshot-section');
+  const img     = document.getElementById('modal-screenshot-img');
+  section.classList.toggle('open');
+  // Lazy-load on first expand
+  if (section.classList.contains('open') && !img.getAttribute('src') && pendingQueueFilename) {
+    img.src = modalScreenshotUrl();
+  }
+});
+
+document.getElementById('modal-screenshot-img').addEventListener('click', () => {
+  if (pendingQueueFilename) window.open(modalScreenshotUrl(), '_blank');
+});
+
 document.getElementById('modal-close-btn').addEventListener('click',  closeGameModal);
 document.getElementById('modal-cancel-btn').addEventListener('click', closeGameModal);
 document.getElementById('game-modal').addEventListener('click', e => {
@@ -682,6 +726,7 @@ async function saveModalGame() {
     mitigation:    numOrNull('m-mitigation'),
     game_length_s: numOrNull('m-game-length'),
     notes:         document.getElementById('m-notes').value,
+    screenshot_path: pendingScreenshotPath || '',
     data_source:   'manual',
     is_historical: modalIsHistorical,
     practiced:     (activeSession && !modalIsHistorical) ? practiceSelection : null,
@@ -693,15 +738,25 @@ async function saveModalGame() {
   if (datetimeVal) payload.played_at = datetimeVal.length === 16 ? datetimeVal + ':00' : datetimeVal;
   if (activeSession && !modalIsHistorical) payload.session_id = activeSession.id;
 
+  // Save hero templates BEFORE the match POST: when screenshot_path is set the
+  // server dequeues the item and archives the file, which would break the
+  // template endpoint's queue lookup and crop source.
+  if (pendingQueueFilename) await saveHeroTemplates(pendingQueueFilename);
+
   const result = await api.post('/api/matches', payload);
   if (result.id) {
     msgEl.textContent = `Game #${result.id} saved.`;
     msgEl.style.color = 'var(--win)';
 
     if (pendingQueueFilename) {
-      await saveHeroTemplates(pendingQueueFilename);
-      await api.delete(`/api/queue/${encodeURIComponent(pendingQueueFilename)}`);
-      pendingQueueFilename = null;
+      // With a screenshot_path the server already dequeued + archived to
+      // processed/. The explicit delete is only for path-less items — it
+      // archives to discarded/, which is wrong for a saved game.
+      if (!pendingScreenshotPath) {
+        await api.delete(`/api/queue/${encodeURIComponent(pendingQueueFilename)}`);
+      }
+      pendingQueueFilename  = null;
+      pendingScreenshotPath = null;
       checkQueue();
     }
 
@@ -1359,7 +1414,7 @@ async function confirmQueueItem(idx) {
   const data = await api.get('/api/queue');
   const item = data.queue[idx];
   if (!item) return;
-  const p = { ...(item.parsed || {}), _queueFilename: item.filename };
+  const p = { ...(item.parsed || {}), _queueFilename: item.filename, _screenshotPath: item.path || null };
 
   // Apply any hero corrections from the team comp panel
   const state = queueHeroState[item.filename];

@@ -327,6 +327,28 @@ def parse_file_manual(body: dict):
     return {"ok": True}
 
 
+@app.get("/api/queue/{filename}/image")
+def get_queue_screenshot(filename: str):
+    """Serve the full source screenshot for a queue item (spot-check OCR results).
+
+    Falls back to the inbox and its processed/discarded archives so the image
+    stays viewable right after the item is dequeued.
+    """
+    safe_name = Path(filename).name  # block path traversal
+    candidates = []
+    item = next((i for i in load_queue() if i["filename"] == safe_name), None)
+    if item and item.get("path"):
+        candidates.append(Path(item["path"]))
+    inbox = Path(load_settings().get("inbox_folder", "C:\\OW-Tracker\\inbox"))
+    candidates += [inbox / safe_name, inbox / "processed" / safe_name, inbox / "discarded" / safe_name]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
+        raise HTTPException(404, "Screenshot not found")
+    media = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+    return Response(content=path.read_bytes(), media_type=media,
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.get("/api/queue/{filename}/portrait/{team}/{row}")
 def get_portrait_crop(filename: str, team: str, row: int):
     if team not in ("my", "enemy"):

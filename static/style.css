@@ -586,6 +586,24 @@ select option { background: var(--surface); }
 .modal-section {
   margin-bottom: 20px;
 }
+/* Source-screenshot spot-check (queue-confirmed games only) */
+#modal-screenshot-section { margin-bottom: 16px; }
+.modal-screenshot-toggle {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 12px; cursor: pointer;
+  color: var(--muted); font-size: 12px; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: color .15s, border-color .15s;
+}
+.modal-screenshot-toggle:hover { color: var(--text); border-color: var(--accent); }
+.modal-screenshot-chevron { font-size: 10px; transition: transform .2s; }
+#modal-screenshot-section.open .modal-screenshot-chevron { transform: rotate(180deg); }
+.modal-screenshot-body { display: none; margin-top: 10px; }
+#modal-screenshot-section.open .modal-screenshot-body { display: block; }
+#modal-screenshot-img {
+  max-width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  cursor: zoom-in; display: block;
+}
 .modal-section-title {
   font-family: var(--font-d); font-size: 10px; font-weight: 600;
   color: var(--muted); text-transform: uppercase; letter-spacing: 0.2em;
@@ -793,19 +811,35 @@ select option { background: var(--surface); }
 }
 .sess-hist-card:hover { border-left-color: var(--accent); }
 .sess-hist-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px; cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)) 18px;
+  align-items: center; gap: 16px;
+  padding: 14px 18px; cursor: pointer;
   transition: background .15s;
 }
 .sess-hist-header:hover { background: var(--card-hi); }
+.sess-hist-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .sess-hist-title {
-  font-size: 14px; font-weight: 600; color: var(--text);
-  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  font-size: 16px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sess-hist-wl { font-family: var(--font-m); font-size: 13px; flex-shrink: 0; white-space: nowrap; }
-.sess-hist-wr { font-family: var(--font-m); font-size: 13px; flex-shrink: 0; }
-.sess-hist-meta { font-size: 11px; color: var(--dim); flex-shrink: 0; white-space: nowrap; }
-.sess-hist-chevron { color: var(--dim); font-size: 11px; flex-shrink: 0; transition: transform .2s; }
+.sess-hist-sub { font-size: 11px; color: var(--dim); }
+.sess-hist-stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sess-hist-stat .v {
+  font-family: var(--font-m); font-size: 16px; color: var(--text); white-space: nowrap;
+}
+.sess-hist-stat .l {
+  font-size: 9px; font-weight: 600; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 0.15em;
+}
+.sess-hist-chevron { color: var(--dim); font-size: 11px; justify-self: end; transition: transform .2s; }
+@media (max-width: 640px) {
+  .sess-hist-header {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) 18px;
+  }
+  .sess-hist-id { grid-column: 1 / -2; }
+  .sess-hist-chevron { grid-row: 1; grid-column: -2; }
+}
 .sess-hist-card.expanded .sess-hist-chevron { transform: rotate(180deg); }
 .sess-hist-body {
   display: none;
