@@ -24,7 +24,7 @@ SHEETS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALL_HEROES = [
     "Ana", "Anran", "Ashe", "Baptiste", "Bastion", "Brigitte", "Cassidy",
-    "D Va", "Doomfist", "Echo", "Emre", "Freja", "Genji", "Hanzo", "Hazard",
+    "D Mon", "D Va", "Doctrine", "Doomfist", "Echo", "Emre", "Freja", "Genji", "Hanzo", "Hazard",
     "Illari", "Junkrat", "Junker Queen", "Jetpack Cat", "Kiriko", "Lifeweaver",
     "Lucio", "Mauga", "Mei", "Mercy", "Mizuki", "Moira", "Orisa", "Pharah",
     "Juno", "Ramattra", "Reaper", "Reinhardt", "Roadhog", "Sigma", "Sierra", "Shion",

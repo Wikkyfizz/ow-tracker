@@ -57,12 +57,12 @@ HERO_ROLES: dict[str, str] = _load_hero_roles_from_csv() or {
     "Emre": "dps", "Freja": "dps", "Genji": "dps", "Hanzo": "dps",
     "Junkrat": "dps", "Mei": "dps", "Pharah": "dps", "Reaper": "dps",
     "Sierra": "dps", "Shion": "dps", "Sojourn": "dps", "Soldier 76": "dps",
-    "Sombra": "dps", "Symmetra": "dps", "Torbjorn": "dps", "Tracer": "dps",
+    "Symmetra": "dps", "Torbjorn": "dps", "Tracer": "dps",
     "Vendetta": "dps", "Venture": "dps", "Widowmaker": "dps",
     "Ana": "support", "Baptiste": "support", "Brigitte": "support",
     "Illari": "support", "Jetpack Cat": "support", "Juno": "support", "Kiriko": "support",
     "Lifeweaver": "support", "Lucio": "support", "Mercy": "support",
-    "Mizuki": "support", "Moira": "support", "Wuyang": "support", "Zenyatta": "support",
+    "Mizuki": "support", "Moira": "support", "Sombra": "support", "Wuyang": "support", "Zenyatta": "support",
 }
 
 # Legacy slot constants kept for any callers that reference them directly.

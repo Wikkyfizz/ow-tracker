@@ -16,7 +16,6 @@ Shion,Damage,Flex,Flex
 Sierra,Damage,Hitscan,Poke
 Sojourn,Damage,Hitscan,Flex
 Soldier: 76,Damage,Hitscan,Poke
-Sombra,Damage,hitscan,Dive|Brawl
 Symmetra,Damage,flex,Flex
 Torbjörn,Damage,Hitscan,Poke|Brawl
 Tracer,Damage,Flanker,Flex
@@ -26,6 +25,7 @@ Widowmaker,Damage,Sniper,Poke
 Ana,Support,flex,Flex
 Baptiste,Support,flex,Poke|Brawl
 Brigitte,Support,Main Support,Poke|Brawl
+Doctrine,Support,Flex Support,Flex
 Illari,Support,Flex Support,Poke
 Jetpack Cat,Support,Flex Support,Flex
 Juno,Support,Main Support,Dive|Brawl
@@ -35,8 +35,10 @@ Lucio,Support,Main Support,Dive|Brawl
 Mercy,Support,Healer,Poke
 Mizuki,Support,Flex Support,Flex
 Moira,Support,Defensive,Dive|Brawl
+Sombra,Support,Flex Support,Dive|Brawl
 Wuyang,Support,Main Support,Flex
 Zenyatta,Support,Healer,Dive|Poke
+D.Mon,Tank,,Brawl
 D.Va,Tank,Initiator,Dive
 Domina,Tank,Stalwart,Poke|Brawl
 Doomfist,Tank,Initiator,Dive
