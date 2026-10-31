@@ -187,7 +187,7 @@ def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
         _migrate_db(conn)
-        _seed_if_empty(conn)
+        sync_reference_data(conn)
 
 
 def _migrate_db(conn):
@@ -215,18 +215,21 @@ def _migrate_db(conn):
             conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {defn}")
 
 
-def _seed_if_empty(conn):
-    if conn.execute("SELECT COUNT(*) FROM maps").fetchone()[0] > 0:
-        return
+def sync_reference_data(conn):
+    """data/*.csv are the only lists of maps and heroes; bring the DB up to them.
+    Runs at every startup, so a CSV edit can't leave the app behind. Existing maps
+    keep their row, because their affinity can be edited in Settings. Heroes have
+    no such editor, so the CSV always wins (e.g. a hero changing role)."""
     conn.executemany(
         "INSERT OR IGNORE INTO maps (name, game_mode, comp_affinity, notes) VALUES (?,?,?,?)",
-        MAPS_SEED,
+        _load_maps_seed(),
     )
     conn.executemany(
-        "INSERT OR IGNORE INTO heroes (name, role, sub_role, primary_archetype) VALUES (?,?,?,?)",
-        HEROES_SEED,
+        "INSERT INTO heroes (name, role, sub_role, primary_archetype) VALUES (?,?,?,?) "
+        "ON CONFLICT(name) DO UPDATE SET role=excluded.role, sub_role=excluded.sub_role, "
+        "primary_archetype=excluded.primary_archetype",
+        _load_heroes_seed(),
     )
-    pass  # player_rank seeded on first baseline fetch
 
 
 def rank_to_score(tier: str, division: int, pct: float) -> float:

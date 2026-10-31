@@ -8,16 +8,9 @@ from PIL import Image
 from db import get_conn
 
 
-# Non-ranked maps the game can report, which the maps table doesn't carry.
-_EXTRA_MAPS = [
-    "Throne of Anubis", "Hanaoka", "Overwatch Headquarters",
-    "Ramattra Null Sector", "Timelocked Sanctum",
-]
-
-
-def _known_maps() -> list[str]:
+def known_maps() -> list[str]:
     with get_conn() as conn:
-        return [r["name"] for r in conn.execute("SELECT name FROM maps")] + _EXTRA_MAPS
+        return [r["name"] for r in conn.execute("SELECT name FROM maps")]
 
 
 def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
@@ -44,7 +37,7 @@ def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
 
 def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
     from parser.ocr import extract_summary
-    data = extract_summary(img, _known_maps())
+    data = extract_summary(img, known_maps())
     warnings.extend(data.pop("warnings", []))
     return {
         "tab_type":      "SUMMARY",
@@ -56,12 +49,13 @@ def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
         "my_heroes":     [],
         "my_team_heroes": [],
         "enemy_heroes":  [],
-        "elims":         None,
-        "deaths":        None,
-        "assists":       None,
+        "elims":         data.get("elims"),
+        "deaths":        data.get("deaths"),
+        "assists":       data.get("assists"),
         "damage":        None,
         "healing":       None,
         "mitigation":    None,
+        "played_pcts":   data.get("played_pcts", []),
         "teammates":     [],
         "stack_size":    1,
         "confidence":    0.0,
@@ -98,7 +92,7 @@ def _parse_personal_tab(img: Image.Image, warnings: list) -> dict:
 
 def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players: list, warnings: list) -> dict:
     from parser.ocr import extract_all_rows, find_my_row, extract_tracked_players
-    from parser.icons import extract_heroes
+    from parser.icons import extract_heroes, _CSV_NAME_ALIASES
 
     # Name OCR is only useful for matching tracked players (own name + CJK names
     # otherwise read as ""). Skip it entirely when there's nobody to match.
@@ -126,12 +120,16 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
     # team comp (→ my_team_heroes, used only to derive my_comp); the hero(es) the
     # user actually played are picked explicitly in the review step. This avoids
     # crediting teammates' heroes to the user's own hero win-rates.
+    # Templates use code names ("Soldier 76"); everything downstream uses CSV names.
+    to_csv_name = {code: csv_name for csv_name, code in _CSV_NAME_ALIASES.items()}
     my_team_heroes = [
-        {"hero": h["hero"], "confidence": h.get("confidence", 1.0), "role": h.get("role", ""), "row": i}
+        {"hero": to_csv_name.get(h["hero"], h["hero"]), "confidence": h.get("confidence", 1.0),
+         "role": h.get("role", ""), "row": i}
         for i, h in enumerate(raw_my)
     ]
     enemy_heroes = [
-        {"hero": h["hero"], "confidence": h.get("confidence", 1.0), "role": h.get("role", ""), "row": i}
+        {"hero": to_csv_name.get(h["hero"], h["hero"]), "confidence": h.get("confidence", 1.0),
+         "role": h.get("role", ""), "row": i}
         for i, h in enumerate(raw_enemy)
     ]
     confidence   = icon_result.get("confidence", 0.0)
@@ -161,3 +159,61 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
         "confidence":    round(confidence, 2),
         "warnings":      warnings,
     }
+
+
+# ── Merging a SUMMARY + TEAM screenshot of one game ───────────────────────────
+
+_EAD = ("elims", "assists", "deaths")
+_MIN_MATCHING_STATS = 2  # of E/A/D; the TEAM grid misreads some, so 3/3 is too strict
+
+
+def match_summary_row(summary: dict, team: dict) -> tuple[int, int | None]:
+    """Compare SUMMARY's own E/A/D with each my-team row of a TEAM parse.
+    Returns (best score, row index). The row is None if two rows tie."""
+    best, best_rows = 0, []
+    rows = (team.get("team_rows") or {}).get("my_team", [])
+    for i, row in enumerate(rows):
+        score = sum(summary.get(k) is not None and summary.get(k) == row.get(k) for k in _EAD)
+        if score > best:
+            best, best_rows = score, [i]
+        elif score == best:
+            best_rows.append(i)
+    return best, (best_rows[0] if len(best_rows) == 1 else None)
+
+
+def is_same_game(summary: dict, team: dict) -> bool:
+    return match_summary_row(summary, team)[0] >= _MIN_MATCHING_STATS
+
+
+def merge_summary_team(summary: dict, team: dict) -> dict:
+    """Combine both parses: SUMMARY supplies map/result/time/length and the player's
+    E/A/D; TEAM supplies the comps and the player's DMG/H/MIT."""
+    _, row_idx = match_summary_row(summary, team)
+    merged = dict(team)
+    for k in ("map", "outcome", "game_length_s", "played_at", "game_mode", "played_pcts"):
+        merged[k] = summary.get(k)
+    merged["merged"] = True
+    merged["my_row"] = row_idx
+
+    warnings = list(summary.get("warnings", []))
+    warnings += [w for w in team.get("warnings", [])
+                 if not w.startswith(("Map and outcome", "Select the hero"))]
+
+    row = {}
+    if row_idx is None:
+        warnings.append("Couldn't tell which scoreboard row is yours — check DMG/H/MIT")
+        for k in ("damage", "healing", "mitigation"):
+            merged[k] = None
+    else:
+        row = team["team_rows"]["my_team"][row_idx]
+        for k in ("damage", "healing", "mitigation"):
+            merged[k] = row.get(k)
+    for k in _EAD:
+        merged[k] = summary[k] if summary.get(k) is not None else row.get(k)
+
+    pcts = merged.get("played_pcts") or []
+    if pcts != [100]:
+        played = " + ".join(f"{p}%" for p in pcts) or "unknown split"
+        warnings.append(f"Hero split on Summary: {played} — select the heroes you played")
+    merged["warnings"] = warnings
+    return merged

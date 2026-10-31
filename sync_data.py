@@ -95,15 +95,7 @@ def fetch_updates():
     _write_csv(map_path, MAP_HEADER, [[m[c] for c in MAP_HEADER] for m in maps])
 
     with db.get_conn() as conn:
-        conn.executemany(
-            "INSERT OR IGNORE INTO heroes (name, role, sub_role, primary_archetype) VALUES (?,?,?,?)",
-            db._load_heroes_seed(),
-        )
-        conn.executemany(
-            "INSERT OR IGNORE INTO maps (name, game_mode, comp_affinity, notes) VALUES (?,?,?,?)",
-            db._load_maps_seed(),
-        )
-        conn.executemany("UPDATE heroes SET role=? WHERE name=?", [(r, n) for n, r in role_changes])
+        db.sync_reference_data(conn)
 
     print(f"New heroes: {new_heroes or 'none'}")
     print(f"Role changes: {role_changes or 'none'}")

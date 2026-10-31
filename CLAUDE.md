@@ -25,7 +25,12 @@ Quick-reference for any new session. Read this before touching code.
 | `Torbjörn` | `Torbjorn` | ASCII-only slug |
 | `D.Va` | `D Va` | Slug `d_va` matches either |
 
-After a game update, `venv/Scripts/python.exe sync_data.py --fetch` adds new heroes and ranked maps from OverFast and applies role changes, keeping existing archetypes and affinities. CSV edits don't reach an existing DB on their own: run `sync_data.py`, but note it overwrites map affinities edited in Settings.
+`data/maps.csv` is the same for maps. **These two CSVs are the only lists: never hardcode a list of maps or heroes elsewhere.** `test_reference_data.py` fails if a map list reappears. Everything else reads them through the DB:
+
+- App startup (`db.sync_reference_data`) adds new maps, keeping affinities edited in Settings, and overwrites heroes from the CSV.
+- The parser uses `pipeline.known_maps()`. The UI uses `/api/maps` and re-reads it whenever the game form opens.
+
+After a game update, `venv/Scripts/python.exe sync_data.py --fetch` adds new heroes and ranked maps from OverFast and applies role changes. To push CSV affinity edits onto existing maps, run `sync_data.py` with no flag; it overwrites affinities edited in Settings. `KNOWN_GAME_MODES` in `parser/ocr.py` is a separate, short list of modes.
 
 `parser/icons.py` loads `HERO_ROLES` dynamically from `heroes.csv` at import time (with `_CSV_NAME_ALIASES` for the three above). If CSV is unavailable, a hardcoded fallback is used. **Do not add heroes to the hardcoded fallback — add them to `heroes.csv` only.**
 
@@ -61,11 +66,11 @@ Examples:
 
 ### Known issues
 
-**Tank slot crop quality (slot 0 on both teams):** When a player has a title badge displayed, the portrait thumbnail is pushed up, cutting off the bottom of the portrait. `_refine_row_center()` partially compensates but tank-slot crops remain lower quality than others. Avoid saving templates from tank-slot crops if the bottom is visibly cut off.
+**Row alignment:** `ocr._find_row_centers()` measures all 10 rows from the digits in the DMG→MIT columns. The old per-row estimate placed the player's row (slot 0) 14px too high in every screenshot because it caught the white header bar. All templates were re-cropped on 2026-10-31. If this measuring changes, existing templates must be re-cropped to match.
 
-**enemy/lucio.png:** The saved template came from a DPS slot (wrong position for a support hero). Delete and re-save from a confirmed support slot.
+**Matching:** crops are compared in grayscale against the `my/` AND `enemy/` templates, so a correction on one team helps the other. Each hero has at most one template per folder, and a new correction overwrites that folder's copy.
 
-**Template count (as of 2026-06-27):** 24 MY / 24 ENEMY templates saved. ~28 heroes per team still missing templates. These return low-confidence matches until templates are added.
+**Template count (as of 2026-10-31):** 31 MY / 32 ENEMY, of 54 heroes.
 
 ### Template library tools
 

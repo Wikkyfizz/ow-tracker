@@ -31,6 +31,7 @@ _REF_W, _REF_H = 1920, 1080
 MY_TEAM_ROW_Y_FRAC    = [y / _REF_H for y in [270, 338, 406, 474, 542]]
 ENEMY_TEAM_ROW_Y_FRAC = [y / _REF_H for y in [688, 756, 824, 892, 960]]
 ROW_HALF_H_FRAC       = 28 / _REF_H
+ROW_SCAN_START_FRAC   = 240 / _REF_H   # just below the column-header bar
 
 # Stat columns (x_left_frac, x_right_frac) — calibrated from 1920×1080.
 # Column order on screen: E (elims), A (assists), D (deaths), DMG, H (healing), MIT.
@@ -52,41 +53,38 @@ def _px(frac, dim):
     return int(frac * dim)
 
 
-def _refine_row_center(img_bgr, y_approx, img_w, img_h, window=45):
+def _find_row_centers(img_bgr, img_w, img_h):
     """
-    Find the true vertical center of a player row by locating bright stat text
-    across the full stat band (elims → mitigation).  Searches within ±window pixels
-    of y_approx; falls back to y_approx when no text signal is found.
-
-    Needed because the optional player title display varies row height per player,
-    making fixed fractional offsets inaccurate for some rows.
+    Locate the y-center of all 10 player rows from the bright digits in the
+    DMG→MIT columns. Rows vary in height (optional player titles shift them), so
+    positions are measured rather than assumed. The scan starts below the white
+    column-header bar. Returns None unless exactly 10 rows are found.
     """
-    x1 = int(STAT_COLS_FRAC["elims"][0]      * img_w)
+    x1 = int(STAT_COLS_FRAC["damage"][0]     * img_w)
     x2 = int(STAT_COLS_FRAC["mitigation"][1] * img_w)
-    y_lo = max(0, y_approx - window)
-    y_hi = min(img_h, y_approx + window)
+    y_start = _px(ROW_SCAN_START_FRAC, img_h)
+    bright_per_line = (img_bgr[y_start:img_h, x1:x2].mean(axis=2) > 190).sum(axis=1)
 
-    strip = img_bgr[y_lo:y_hi, x1:x2]
-    # Average channels instead of full BGR→gray to avoid cv2 import here
-    bright = (strip.mean(axis=2) > 190).astype(np.float32)
-    row_sums = bright.sum(axis=1)
+    bands = []
+    for y, count in enumerate(bright_per_line):
+        if count < 3:
+            continue
+        if bands and y - bands[-1][1] <= 3:
+            bands[-1][1] = y
+        else:
+            bands.append([y, y])
 
-    if row_sums.max() < 5:           # not enough bright pixels — use default
-        return y_approx
-
-    ys = np.arange(len(row_sums), dtype=np.float32)
-    centroid = float((ys * row_sums).sum() / row_sums.sum())
-    refined = int(y_lo + centroid)
-    # Titles only push row content DOWN; a large upward shift means we caught
-    # column header text above the row (e.g. "E A D DMG H MIT").  Clamp.
-    return max(refined, y_approx - 10)
+    # Keep digit-height bands, which drops thin lines such as the "VS" divider.
+    min_h, max_h = _px(8 / _REF_H, img_h), _px(30 / _REF_H, img_h)
+    centers = [y_start + (top + bot) // 2 for top, bot in bands if min_h <= bot - top <= max_h]
+    return centers if len(centers) == 10 else None
 
 
 def row_slots(img_w, img_h, img_bgr=None):
     """
     Return (my_team_rows, enemy_team_rows) as lists of (x1,y1,x2,y2) pixel tuples.
-    When img_bgr is supplied, refines each row's y-center from stat column text
-    positions, handling variable row height caused by player title display.
+    When img_bgr is supplied, each row's y-center is measured from the image;
+    otherwise (or if measuring fails) the typical row positions are used.
     """
     px1 = _px(PORTRAIT_X_FRAC[0], img_w)
     px2 = _px(PORTRAIT_X_FRAC[1], img_w)
@@ -96,8 +94,9 @@ def row_slots(img_w, img_h, img_bgr=None):
     enemy_ys = [_px(f, img_h) for f in ENEMY_TEAM_ROW_Y_FRAC]
 
     if img_bgr is not None:
-        my_ys    = [_refine_row_center(img_bgr, y, img_w, img_h) for y in my_ys]
-        enemy_ys = [_refine_row_center(img_bgr, y, img_w, img_h) for y in enemy_ys]
+        centers = _find_row_centers(img_bgr, img_w, img_h)
+        if centers:
+            my_ys, enemy_ys = centers[:5], centers[5:]
 
     my_rows    = [(px1, cy - half_h, px2, cy + half_h) for cy in my_ys]
     enemy_rows = [(px1, cy - half_h, px2, cy + half_h) for cy in enemy_ys]
@@ -129,6 +128,14 @@ SUMMARY_REGIONS = {
 # GAME MODE and GAME LENGTH bullet positions vary by game mode (Push skips GAME MODE).
 # _scan_summary_bullets() scans this y range dynamically.
 SUMMARY_BULLET_SCAN_Y = (712, 790)  # y range to scan for GAME MODE / GAME LENGTH
+# The player's own totals in large type (middle panel). More reliable than the
+# TEAM grid, which drops leading 1s; also what identifies the player's TEAM row.
+SUMMARY_STAT_REGIONS = {
+    "elims":   (880, 315, 1100, 352),
+    "assists": (880, 556, 1100, 593),
+    "deaths":  (880, 797, 1100, 834),
+}
+SUMMARY_PCT_REGIONS = [(262, 322, 420, 350), (262, 562, 420, 590), (262, 802, 420, 830)]  # hero-card "% played"
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
@@ -224,6 +231,26 @@ def _scan_summary_bullets(img: Image.Image) -> dict:
     return found
 
 
+def _ocr_summary_int(img: Image.Image, region: tuple) -> int | None:
+    """Read white-on-dark digits from the SUMMARY panels (upscale + threshold)."""
+    crop = img.crop(region).convert("L")
+    crop = crop.resize((crop.width * 3, crop.height * 3), Image.LANCZOS)
+    binary = Image.fromarray(np.where(np.array(crop) > 105, 0, 255).astype(np.uint8))
+    raw = pytesseract.image_to_string(
+        binary, config="--psm 7 -c tessedit_char_whitelist=0123456789%"
+    )
+    m = re.search(r'\d+', raw)
+    return int(m.group()) if m else None
+
+
+def extract_summary_stats(img: Image.Image) -> dict:
+    """The player's own E/A/D and the % played on each hero card (0% cards dropped)."""
+    stats = {k: _ocr_summary_int(img, r) for k, r in SUMMARY_STAT_REGIONS.items()}
+    pcts = [_ocr_summary_int(img, r) for r in SUMMARY_PCT_REGIONS]
+    stats["played_pcts"] = [p for p in pcts if p]
+    return stats
+
+
 def extract_summary(img: Image.Image, known_maps: list[str]) -> dict:
     """
     Parse a SUMMARY tab screenshot.
@@ -275,6 +302,7 @@ def extract_summary(img: Image.Image, known_maps: list[str]) -> dict:
         "game_length_s": game_length_s,
         "played_at":     played_at,
         "game_mode":     raw_mode,
+        **extract_summary_stats(img),
         "warnings":      warnings,
     }
 

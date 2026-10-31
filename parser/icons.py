@@ -106,7 +106,7 @@ def _load_portraits() -> dict:
                 continue
             for path in team_dir.glob("*.png"):
                 hero = path.stem.replace("_", " ").title()
-                img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+                img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
                 if img is not None:
                     # Store already resized to canonical dimensions
                     _portrait_cache[team][hero] = cv2.resize(
@@ -126,28 +126,28 @@ def _ccoeff_normed(crop_bgr, tmpl_f32) -> float:
     return float(num / den) if den > 0 else 0.0
 
 
-def _match_slot(img_bgr, slot: tuple, templates: dict, role: str | None = None) -> tuple[str, float]:
-    """Extract the portrait crop for a slot and score against role-filtered templates."""
+def _match_slot(img_bgr, slot: tuple, portraits: dict, role: str | None = None) -> tuple[str, float]:
+    """Extract the portrait crop for a slot and score it against role-filtered templates
+    from BOTH teams. Grayscale removes the blue/red row tint, so a correction on one team
+    also teaches the other: in color, the same hero on opposite teams barely correlates."""
     try:
         import cv2
         l, t, r, b = slot
         crop = img_bgr[t:b, l:r]
         if crop.size == 0:
             return "", 0.0
-        crop_r = cv2.resize(crop, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA)
-        # Restrict candidates to the correct role; heroes with no role entry are included as fallback
-        if role:
-            candidates = {h: t for h, t in templates.items()
-                          if HERO_ROLES.get(h) == role or h not in HERO_ROLES}
-            if not candidates:
-                candidates = templates
-        else:
-            candidates = templates
+        crop_r = cv2.cvtColor(
+            cv2.resize(crop, (CANONICAL_W, CANONICAL_H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY
+        )
         best_hero, best_score = "", -1.0
-        for hero, tmpl in candidates.items():
-            score = _ccoeff_normed(crop_r, tmpl)
-            if score > best_score:
-                best_hero, best_score = hero, score
+        for team in ("my", "enemy"):
+            for hero, tmpl in portraits[team].items():
+                # Heroes with no role entry are included as a fallback
+                if role and hero in HERO_ROLES and HERO_ROLES[hero] != role:
+                    continue
+                score = _ccoeff_normed(crop_r, tmpl)
+                if score > best_score:
+                    best_hero, best_score = hero, score
         return best_hero, best_score
     except Exception:
         return "", 0.0
@@ -181,14 +181,14 @@ def extract_heroes(img_path: str) -> dict:
 
         for i, slot in enumerate(my_slots):
             role = SLOT_ROLES[i]
-            hero, score = _match_slot(img_bgr, slot, portraits["my"], role)
+            hero, score = _match_slot(img_bgr, slot, portraits, role)
             display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
             my_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})
             scores.append(score)
 
         for i, slot in enumerate(enemy_slots):
             role = SLOT_ROLES[i]
-            hero, score = _match_slot(img_bgr, slot, portraits["enemy"], role)
+            hero, score = _match_slot(img_bgr, slot, portraits, role)
             display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
             enemy_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})
             scores.append(score)

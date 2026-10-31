@@ -15,17 +15,6 @@ from parser.ocr import (
 
 
 INBOX = Path(r"E:\Claude stuff\OW screenshots")
-KNOWN_MAPS = [
-    "Antarctic Peninsula", "Busan", "Ilios", "Lijiang Tower", "Nepal", "Oasis", "Samoa",
-    "Circuit Royal", "Dorado", "Havana", "Junkertown", "Rialto", "Route 66",
-    "Shambali Monastery", "Watchpoint: Gibraltar",
-    "Blizzard World", "Eichenwalde", "Hollywood", "King's Row", "Midtown", "Numbani", "Paraiso",
-    "Colosseo", "Esperanca", "New Junk City", "Suravasa",
-    "New Queen Street", "Runasapi", "Throne of Anubis",
-    "Hanaoka", "Neon Junction", "Overwatch Headquarters",
-    "Ramattra Null Sector", "Timelocked Sanctum",
-    "Aatlis",
-]
 
 
 def _divider(char="-", n=60):
@@ -42,7 +31,8 @@ def calibrate_summary(img: Image.Image, name: str):
         print(f"    {k:12s} -> '{v}'")
 
     print()
-    data = extract_summary(img, KNOWN_MAPS)
+    from parser.pipeline import known_maps
+    data = extract_summary(img, known_maps())
     print(f"  map:          {data['map']!r}")
     print(f"  outcome:      {data['outcome']!r}")
     print(f"  game_mode:    {data['game_mode']!r}")

@@ -120,10 +120,110 @@ def _watch_loop():
         _observer.schedule(Handler(), str(inbox), recursive=False)
         _observer.start()
         print(f"[watcher] watching {inbox}")
+        _scan_inbox(inbox)
         while True:
             time.sleep(5)
     except Exception as e:
         print(f"[watcher] error: {e}")
+
+
+MERGE_WINDOW_S = 15 * 60  # SUMMARY + TEAM of one game are captured close together
+MISSED_SCREENSHOT_WINDOW_S = 24 * 3600
+
+
+def _scan_inbox(inbox: Path):
+    """Pick up screenshots saved while the app was off. Handled files leave the inbox
+    root, so anything recent still there was missed; the age limit skips old leftovers."""
+    cutoff = time.time() - MISSED_SCREENSHOT_WINDOW_S
+    queued = set()
+    for i in load_queue():
+        queued.update({i["filename"], i.get("linked_filename")})
+    missed = [p for p in inbox.iterdir()
+              if p.suffix.lower() in (".png", ".jpg", ".jpeg") and p.is_file()
+              and p.stat().st_mtime >= cutoff and p.name not in queued]
+    for p in sorted(missed, key=lambda p: p.stat().st_mtime):
+        _handle_new_screenshot(str(p))
+
+
+def _damage_signature(parsed: dict):
+    # DMG/MIT read reliably across screenshots, unlike E/A/D.
+    rows = parsed.get("team_rows") or {}
+    all_rows = rows.get("my_team", []) + rows.get("enemy_team", [])
+    return tuple((r.get("damage"), r.get("mitigation")) for r in all_rows)
+
+
+def _is_duplicate(parsed: dict, other: dict) -> bool:
+    """True if `other`, a queued parse, already covers this screenshot's game."""
+    if parsed.get("tab_type") == "SUMMARY":
+        return bool(parsed.get("played_at")) and (parsed.get("played_at"), parsed.get("map")) == (
+            other.get("played_at"), other.get("map"))
+    if parsed.get("tab_type") == "TEAM":
+        return bool(_damage_signature(parsed)) and _damage_signature(parsed) == _damage_signature(other)
+    return False
+
+
+def _find_merge_partner(queue: list, item: dict):
+    """The closest-in-time queued screenshot that is the other half of this game."""
+    from parser.pipeline import is_same_game
+    tab = item["parsed"].get("tab_type")
+    wanted = {"SUMMARY": "TEAM", "TEAM": "SUMMARY"}.get(tab)
+    if not wanted:
+        return None
+    candidates = [
+        q for q in queue
+        if q.get("parsed", {}).get("tab_type") == wanted and not q["parsed"].get("merged")
+        and q.get("captured_at") and abs(q["captured_at"] - item["captured_at"]) <= MERGE_WINDOW_S
+    ]
+    candidates.sort(key=lambda q: abs(q["captured_at"] - item["captured_at"]))
+    for q in candidates:
+        summary, team = (item, q) if tab == "SUMMARY" else (q, item)
+        if is_same_game(summary["parsed"], team["parsed"]):
+            return q
+    return None
+
+
+def _warn_if_already_logged(parsed: dict):
+    if not parsed.get("played_at"):
+        return
+    with db.get_conn() as conn:
+        found = conn.execute(
+            "SELECT id FROM matches WHERE played_at=? AND map=?", (parsed["played_at"], parsed.get("map"))
+        ).fetchone()
+    if found:
+        parsed.setdefault("warnings", []).append(f"This game looks already logged (game #{found['id']})")
+
+
+def _enqueue_screenshot(item: dict):
+    """Add a parsed screenshot, dropping duplicates and merging it with its other half."""
+    from parser.pipeline import merge_summary_team
+    with _queue_lock:
+        q = load_queue()
+        if any(i["filename"] == item["filename"] for i in q):
+            return
+        parsed = item["parsed"]
+        if any(_is_duplicate(parsed, i.get("parsed", {})) for i in q):
+            print(f"[queue] duplicate of a queued game, discarding {item['filename']}")
+            _archive_screenshot(item["path"], "discarded")
+            return
+        _warn_if_already_logged(parsed)
+        partner = _find_merge_partner(q, item)
+        if partner:
+            summary, team = (item, partner) if parsed.get("tab_type") == "SUMMARY" else (partner, item)
+            q[q.index(partner)] = {
+                **team,
+                "parsed": merge_summary_team(summary["parsed"], team["parsed"]),
+                "linked_filename": summary["filename"],
+                "linked_path": summary["path"],
+            }
+        else:
+            q.append(item)
+        save_queue(q)
+
+
+def _archive_queue_item(item: dict, subfolder: str):
+    for key in ("path", "linked_path"):
+        if item.get(key):
+            _archive_screenshot(item[key], subfolder)
 
 
 def _handle_new_screenshot(path: str):
@@ -131,11 +231,12 @@ def _handle_new_screenshot(path: str):
     settings = load_settings()
     try:
         result = parse_screenshot(path, username=settings.get("username", "DROWZY"))
-        queue_add({
+        _enqueue_screenshot({
             "filename": Path(path).name,
             "path": path,
             "parsed": result,
             "added_at": datetime.now().isoformat(),
+            "captured_at": os.path.getmtime(path),
         })
     except Exception as e:
         print(f"[parser] error on {path}: {e}")
@@ -232,8 +333,12 @@ def create_match(body: MatchCreate):
         )
         match_id = cur.lastrowid
         if body.screenshot_path:
-            queue_remove(Path(body.screenshot_path).name)
+            filename = Path(body.screenshot_path).name
+            item = next((i for i in load_queue() if i["filename"] == filename), None)
+            queue_remove(filename)
             _archive_screenshot(body.screenshot_path, "processed")
+            if item and item.get("linked_path"):
+                _archive_screenshot(item["linked_path"], "processed")
         if body.participants:
             conn.executemany(
                 """INSERT INTO match_participants
@@ -312,8 +417,8 @@ def get_queue():
 def discard_queue_item(filename: str):
     item = next((i for i in load_queue() if i["filename"] == filename), None)
     queue_remove(filename)
-    if item and item.get("path"):
-        _archive_screenshot(item["path"], "discarded")
+    if item:
+        _archive_queue_item(item, "discarded")
     return {"ok": True}
 
 
@@ -748,7 +853,17 @@ def _resolve_session(conn):
 
 # ── Static files ──────────────────────────────────────────────────────────────
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
+class RevalidatedStaticFiles(StaticFiles):
+    """Make browsers check for a new app.js or style.css on every load. Without this
+    they guess a cache lifetime and a plain reload can keep running old code."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", RevalidatedStaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
 
 
 if __name__ == "__main__":

@@ -99,10 +99,7 @@ function formatDuration(totalSeconds) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
-  [heroes, maps] = await Promise.all([api.get('/api/heroes'), api.get('/api/maps')]);
-  populateMapSelects();
-  buildModalHeroLists();
-  populateHeroFilter();
+  await refreshReferenceData();
   loadDashboard();
   checkQueue();
   setInterval(checkQueue, 10000);
@@ -115,9 +112,18 @@ async function init() {
   }
 }
 
+// Maps and heroes can change while a tab stays open, so the game form re-reads them.
+async function refreshReferenceData() {
+  [heroes, maps] = await Promise.all([api.get('/api/heroes'), api.get('/api/maps')]);
+  populateMapSelects();
+  buildModalHeroLists();
+  populateHeroFilter();
+}
+
 function populateMapSelects() {
   const modalSel = document.getElementById('m-map');
   const hFilter  = document.getElementById('h-map-filter');
+  const filterValue = hFilter.value;
   modalSel.innerHTML = '<option value="">Select map…</option>';
   hFilter.innerHTML  = '<option value="">All Maps</option>';
   const grouped = {};
@@ -135,14 +141,17 @@ function populateMapSelects() {
     modalSel.appendChild(makeGroup());
     hFilter.appendChild(makeGroup());
   });
+  hFilter.value = filterValue;
 }
 
 function populateHeroFilter() {
   const sel = document.getElementById('h-hero-filter');
+  const current = sel.value;
   sel.innerHTML = '<option value="">All Heroes</option>';
   [...new Set(heroes.map(h => h.name))].sort().forEach(n => {
     const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
   });
+  sel.value = current;
 }
 
 // ── Hero chip rendering ───────────────────────────────────────────────────────
@@ -570,7 +579,8 @@ document.getElementById('sess-add-game-btn').addEventListener('click', () => {
 });
 
 // ── GAME MODAL ────────────────────────────────────────────────────────────────
-function openGameModal(prefill, isHistorical) {
+async function openGameModal(prefill, isHistorical) {
+  await refreshReferenceData();
   modalIsHistorical  = isHistorical;
   practiceSelection  = null;
   pendingQueueFilename  = prefill ? prefill._queueFilename  || null : null;
@@ -604,7 +614,15 @@ function openGameModal(prefill, isHistorical) {
 
   // Apply prefill
   if (prefill) {
-    if (prefill.map)          document.getElementById('m-map').value        = prefill.map;
+    if (prefill.map) {
+      const mapSel = document.getElementById('m-map');
+      mapSel.value = prefill.map;
+      // Never silently blank a parsed map that the list doesn't have.
+      if (mapSel.value !== prefill.map) {
+        mapSel.add(new Option(prefill.map, prefill.map));
+        mapSel.value = prefill.map;
+      }
+    }
     if (prefill.outcome)      document.getElementById('m-outcome').value    = prefill.outcome;
     if (prefill.game_length_s != null) document.getElementById('m-game-length').value = prefill.game_length_s;
     if (prefill.played_at)    document.getElementById('m-played-at').value  = prefill.played_at.slice(0, 16); // "YYYY-MM-DDTHH:MM"
@@ -1325,6 +1343,7 @@ async function loadAnalyticsTab(tab) {
 
 // ── QUEUE ─────────────────────────────────────────────────────────────────────
 let lastQueueKey = null;
+const queueKey = queue => queue.map(i => `${i.filename}+${i.linked_filename || ''}`).join('|');
 
 async function checkQueue() {
   const data  = await api.get('/api/queue');
@@ -1333,9 +1352,8 @@ async function checkQueue() {
   badge.textContent    = n;
   badge.style.display  = n > 0 ? 'inline' : 'none';
   if (activeSession) updateQueueHint();
-  // Show screenshots that arrive while the Queue page is open.
-  const key = data.queue.map(i => i.filename).join('|');
-  if (key !== lastQueueKey && document.getElementById('page-queue').classList.contains('active')) {
+  // Show screenshots that arrive (or merge) while the Queue page is open.
+  if (queueKey(data.queue) !== lastQueueKey && document.getElementById('page-queue').classList.contains('active')) {
     loadQueue();
   }
 }
@@ -1359,7 +1377,7 @@ document.getElementById('q-parse-btn').addEventListener('click', async () => {
 
 async function loadQueue() {
   const data    = await api.get('/api/queue');
-  lastQueueKey  = data.queue.map(i => i.filename).join('|');
+  lastQueueKey  = queueKey(data.queue);
   const emptyEl = document.getElementById('queue-empty');
   const listEl  = document.getElementById('queue-list');
   if (!data.queue.length) { emptyEl.style.display = 'flex'; listEl.innerHTML = ''; return; }
@@ -1368,7 +1386,9 @@ async function loadQueue() {
     const p        = item.parsed || {};
     const tabType  = p.tab_type || '';
     const tabClass = tabType.toLowerCase() || 'unknown';
-    const tabBadge = tabType ? `<span class="tab-badge ${tabClass}">${tabType}</span>` : '';
+    const tabBadge = p.merged
+      ? `<span class="tab-badge summary">SUMMARY + TEAM</span>`
+      : (tabType ? `<span class="tab-badge ${tabClass}">${tabType}</span>` : '');
 
     let detailHtml = '';
     let teamCompHtml = '';
@@ -1389,8 +1409,12 @@ async function loadQueue() {
         .map(k => p[k] != null ? `${k[0].toUpperCase() + k.slice(1, 3)}: <strong>${p[k]}</strong>` : null)
         .filter(Boolean).join(' &nbsp;·&nbsp; ');
       const heroList = (p.my_team_heroes || p.my_heroes || []).map(h => (typeof h === 'string' ? h : h.hero) || '').filter(Boolean).join(', ') || '—';
+      const game = p.merged
+        ? `<strong>${p.map || '—'}</strong> &nbsp;·&nbsp; <span class="outcome-${p.outcome}">${p.outcome || '—'}</span>
+           &nbsp;·&nbsp; ${p.played_at ? new Date(p.played_at).toLocaleString() : '—'}<br>`
+        : '';
       detailHtml = `<div class="queue-item-detail">
-        ${stats || 'No stats parsed'}
+        ${game}${stats || 'No stats parsed'}
         <br><span style="font-size:12px;color:var(--dim)">My team: ${heroList}</span>
       </div>`;
       teamCompHtml = renderTeamCompPanel(item);
@@ -1437,6 +1461,10 @@ async function confirmQueueItem(idx) {
     p.my_team_heroes = state.my.map(s => toModalHero(s)).filter(Boolean);
     p.enemy_heroes   = state.enemy.map(s => toModalHero(s)).filter(Boolean);
     p.my_heroes      = [];
+    // Merged game with one hero played: the player's row names that hero.
+    const myRowHero = p.merged && p.my_row != null && (p.played_pcts || []).join() === '100'
+      ? toModalHero(state.my[p.my_row] || {}) : null;
+    if (myRowHero) p.my_heroes = [myRowHero];
   } else {
     // SUMMARY / PERSONAL: my_heroes is already "heroes I played" (or empty).
     p.my_heroes    = (p.my_heroes    || []).map(toModalHero).filter(Boolean);
