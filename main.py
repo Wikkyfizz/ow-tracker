@@ -78,7 +78,7 @@ def _archive_screenshot(path: str, subfolder: str = "processed"):
     """Move a screenshot to inbox/processed/ or inbox/discarded/ after handling."""
     try:
         src = Path(path)
-        if not src.exists():
+        if not src.is_file():
             return
         dest_dir = src.parent / subfolder
         dest_dir.mkdir(exist_ok=True)
@@ -320,7 +320,7 @@ def discard_queue_item(filename: str):
 @app.post("/api/queue/parse-file")
 def parse_file_manual(body: dict):
     path = body.get("path", "").strip()
-    if not path or not Path(path).exists():
+    if not path or not Path(path).is_file():
         raise HTTPException(400, f"File not found: {path}")
     queue_remove(Path(path).name)
     _handle_new_screenshot(path)
@@ -394,11 +394,13 @@ def save_hero_template(body: dict):
         raise HTTPException(404, "Screenshot not found")
     try:
         import cv2
-        from parser.icons import extract_portrait_crop, _portrait_cache, PORTRAITS_DIR
+        from parser.icons import extract_portrait_crop, _portrait_cache, PORTRAITS_DIR, _CSV_NAME_ALIASES
         crop = extract_portrait_crop(path, team, row)
         if crop is None:
             raise HTTPException(500, "Could not extract portrait crop")
-        slug = _re.sub(r"[^a-z0-9]", "_", hero.lower()).strip("_")
+        # The picker sends CSV names; templates use code names ("Soldier: 76" -> soldier_76).
+        code_name = _CSV_NAME_ALIASES.get(hero, hero)
+        slug = _re.sub(r"[^a-z0-9]", "_", code_name.lower()).strip("_")
         dest = PORTRAITS_DIR / team / f"{slug}.png"
         dest.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(dest), crop)

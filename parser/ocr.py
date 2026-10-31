@@ -10,6 +10,7 @@ Handles three screenshot types:
   - PERSONAL tab: hero-specific stats — detection only; full parse is a future feature
 """
 import re
+import unicodedata
 import pytesseract
 from pytesseract import Output
 from PIL import Image, ImageFilter, ImageEnhance
@@ -296,10 +297,17 @@ def _best_mode_match(raw: str, known_modes: list[str]) -> tuple[str, float]:
     return _best_map_match(raw, known_modes)
 
 
+def _fold_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
 def _best_map_match(raw: str, known_maps: list[str]) -> tuple[str, float]:
     best, best_score = "", 0.0
+    raw_folded = _fold_accents(raw).lower()
     for m in known_maps:
-        score = _fuzzy_score(raw.lower(), m.lower())
+        # OCR rarely keeps accents, so compare folded but return the real name.
+        score = _fuzzy_score(raw_folded, _fold_accents(m).lower())
         if score > best_score:
             best, best_score = m, score
     return best, best_score

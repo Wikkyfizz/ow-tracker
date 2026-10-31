@@ -8,17 +8,16 @@ from PIL import Image
 from db import get_conn
 
 
-_KNOWN_MAPS = [
-    "Antarctic Peninsula", "Busan", "Ilios", "Lijiang Tower", "Nepal", "Oasis", "Samoa",
-    "Circuit Royal", "Dorado", "Havana", "Junkertown", "Rialto", "Route 66",
-    "Shambali Monastery", "Watchpoint: Gibraltar",
-    "Blizzard World", "Eichenwalde", "Hollywood", "King's Row", "Midtown", "Numbani", "Paraiso",
-    "Colosseo", "Esperanca", "New Junk City", "Suravasa",
-    "New Queen Street", "Runasapi", "Throne of Anubis",
-    "Hanaoka", "Neon Junction", "Overwatch Headquarters",
+# Non-ranked maps the game can report, which the maps table doesn't carry.
+_EXTRA_MAPS = [
+    "Throne of Anubis", "Hanaoka", "Overwatch Headquarters",
     "Ramattra Null Sector", "Timelocked Sanctum",
-    "Aatlis",
 ]
+
+
+def _known_maps() -> list[str]:
+    with get_conn() as conn:
+        return [r["name"] for r in conn.execute("SELECT name FROM maps")] + _EXTRA_MAPS
 
 
 def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
@@ -45,7 +44,7 @@ def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
 
 def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
     from parser.ocr import extract_summary
-    data = extract_summary(img, _KNOWN_MAPS)
+    data = extract_summary(img, _known_maps())
     warnings.extend(data.pop("warnings", []))
     return {
         "tab_type":      "SUMMARY",

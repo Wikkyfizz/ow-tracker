@@ -25,6 +25,8 @@ Quick-reference for any new session. Read this before touching code.
 | `Torbjörn` | `Torbjorn` | ASCII-only slug |
 | `D.Va` | `D Va` | Slug `d_va` matches either |
 
+After a game update, `venv/Scripts/python.exe sync_data.py --fetch` adds new heroes and ranked maps from OverFast and applies role changes, keeping existing archetypes and affinities. CSV edits don't reach an existing DB on their own: run `sync_data.py`, but note it overwrites map affinities edited in Settings.
+
 `parser/icons.py` loads `HERO_ROLES` dynamically from `heroes.csv` at import time (with `_CSV_NAME_ALIASES` for the three above). If CSV is unavailable, a hardcoded fallback is used. **Do not add heroes to the hardcoded fallback — add them to `heroes.csv` only.**
 
 ---
@@ -139,14 +141,11 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ---
 
-## Active work as of 2026-07-05
+## Active work as of 2026-10-31
 
-- Branch: `fix/data-integrity-and-perf` — has UI Pass 2 **uncommitted** in the
-  working tree (see `docs/ui-pass-2.md`): session-card grid layout, source-screenshot
-  viewer in the game modal (`GET /api/queue/{filename}/image`), and a fix so
-  `screenshot_path` persists on match rows and queue screenshots archive to
-  `processed/` (not `discarded/`) on save.
-- e2e: `cd e2e && npm test` (2 specs, green 2026-07-05). `seed.mjs` generates its
+- Branch: `fix/data-integrity-and-perf`. See `docs/ui-pass-2.md` for UI Pass 2.
+- `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`.
+- e2e: `cd e2e && npm test` (2 specs, green 2026-10-31). `seed.mjs` generates its
   own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
   save/discard flows MOVE the queue item's file.
 - Template matching 93% accuracy on confirmed screenshot set (28/30)

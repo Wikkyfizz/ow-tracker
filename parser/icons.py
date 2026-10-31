@@ -23,6 +23,7 @@ _CSV_NAME_ALIASES: dict[str, str] = {
     "Soldier: 76": "Soldier 76",
     "Torbjörn":    "Torbjorn",
     "D.Va":        "D Va",
+    "D.Mon":       "D Mon",
 }
 
 _CSV_ROLE_MAP = {"damage": "dps", "support": "support", "tank": "tank"}

@@ -1324,6 +1324,8 @@ async function loadAnalyticsTab(tab) {
 }
 
 // ── QUEUE ─────────────────────────────────────────────────────────────────────
+let lastQueueKey = null;
+
 async function checkQueue() {
   const data  = await api.get('/api/queue');
   const n     = data.queue.length;
@@ -1331,6 +1333,11 @@ async function checkQueue() {
   badge.textContent    = n;
   badge.style.display  = n > 0 ? 'inline' : 'none';
   if (activeSession) updateQueueHint();
+  // Show screenshots that arrive while the Queue page is open.
+  const key = data.queue.map(i => i.filename).join('|');
+  if (key !== lastQueueKey && document.getElementById('page-queue').classList.contains('active')) {
+    loadQueue();
+  }
 }
 
 document.getElementById('q-parse-btn').addEventListener('click', async () => {
@@ -1352,6 +1359,7 @@ document.getElementById('q-parse-btn').addEventListener('click', async () => {
 
 async function loadQueue() {
   const data    = await api.get('/api/queue');
+  lastQueueKey  = data.queue.map(i => i.filename).join('|');
   const emptyEl = document.getElementById('queue-empty');
   const listEl  = document.getElementById('queue-list');
   if (!data.queue.length) { emptyEl.style.display = 'flex'; listEl.innerHTML = ''; return; }
