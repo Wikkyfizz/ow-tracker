@@ -148,12 +148,15 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ## Active work as of 2026-10-31
 
+- **Handoff and backlog:** the "Pick up here" box in the vault's `wiki/personal/ow-tracker.md`. Next build: hero picker.
 - Branch: `fix/data-integrity-and-perf`. See `docs/ui-pass-2.md` for UI Pass 2.
-- `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`.
-- e2e: `cd e2e && npm test` (2 specs, green 2026-10-31). `seed.mjs` generates its
+- `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored, so real games have no backup yet.
+- Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
+- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`.
+- e2e: `cd e2e; npm test` (7 tests, green 2026-10-31). `seed.mjs` generates its
   own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
   save/discard flows MOVE the queue item's file.
-- Template matching 93% accuracy on confirmed screenshot set (28/30)
+- Template matching: about 85% correct on screenshots a template didn't come from (2026-10-31; labels came from detection itself, so treat this as an estimate).
 - Design doc for Queue hero correction panel: `docs/hero-detection-design.md`
 - PERSONAL tab parsing: stub only — major future feature, do not implement yet
 - Remaining UI backlog: hero icons (needs asset pipeline) — see vault memory
