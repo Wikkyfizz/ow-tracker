@@ -98,7 +98,7 @@ Tab detection order: PERSONAL first (its region overlaps SUMMARY), then SUMMARY,
 - **`my_team_heroes`** = the user's full 5-hero team comp. Used *only* to derive `my_comp`. Not counted toward the user's hero record.
 - **`enemy_heroes`** = the enemy's full 5-hero comp (drives `enemy_comp` + vs-enemy analytics).
 
-The TEAM scoreboard gives the full team comp but **cannot identify which slot is the user** — every name OCRs to `""` (stylised own-name banner + CJK teammate names). So `_parse_team_tab` puts the 5 detected my-team heroes in `my_team_heroes` and leaves `my_heroes` **empty**; the user picks their played hero explicitly in the Queue review. (Auto-filling `my_heroes` would require a **new SUMMARY-tab portrait template library** — the SUMMARY "HEROES PLAYED" panel shows the user's heroes + exact pcts, but its round thumbnails don't match the rectangular scoreboard templates, and its hero-name text is unreadable by Tesseract (styled font). This is the natural next feature.)
+The player's row comes from a merge with SUMMARY, or from `names.find_own_row`; if neither finds it, the stats stay blank. `_parse_team_tab` puts the 5 detected my-team heroes in `my_team_heroes` and leaves `my_heroes` **empty**; the user picks their played hero explicitly in the Queue review. (Auto-filling `my_heroes` would require a **new SUMMARY-tab portrait template library** — the SUMMARY "HEROES PLAYED" panel shows the user's heroes + exact pcts, but its round thumbnails don't match the rectangular scoreboard templates, and its hero-name text is unreadable by Tesseract (styled font). This is the natural next feature.)
 
 ### OCR performance (TEAM stat grid)
 
@@ -149,12 +149,15 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ## Active work as of 2026-11-01
 
-- **Handoff and backlog:** the "Pick up here" box in the vault's `wiki/personal/ow-tracker.md`. Next build: required rank at Confirm.
+- **Plan and handoff:** the Roadmap section of the vault's `wiki/personal/ow-tracker.md`. Milestone 1 is built; its check (10 real games) is pending. Rank is deferred.
+- **Per-user data is never committed:** `settings.json` (copy `settings.example.json`), `player_names/`, the DB, screenshots. No personal names or paths in code or defaults.
+- **Who was in the party:** `parser/names.py` compares images of scoreboard names, since OCR can't read them reliably. A match only prefills; the user confirms at Confirm or Edit. `/api/players/remember` saves the template and adds them to the list.
+- **Backups:** `backup.py`, to `backup_folder` in Settings, at startup and daily.
 - See `docs/ui-pass-2.md` for UI Pass 2.
 - `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored; the only backup is a manual copy from 2026-11-01 on the same disk.
 - Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
 - Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`.
-- e2e: `cd e2e; npm test` (8 tests, green 2026-11-01). `seed.mjs` generates its
+- e2e: `cd e2e; npm test` (16 tests, green 2026-11-01). `seed.mjs` generates its
   own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
   save/discard flows MOVE the queue item's file.
 - Template matching: about 85% correct on screenshots a template didn't come from (2026-10-31; labels came from detection itself, so treat this as an estimate).

@@ -262,6 +262,22 @@ select option { background: var(--surface); }
   color: var(--muted);
 }
 
+.pct-input {
+  width: 46px; padding: 0 2px; font-size: 10px; font-family: var(--font-m);
+  background: var(--faint); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--text); text-align: right;
+}
+.hero-chip:not(.selected) .pct-input { display: none; }
+
+.party-row {
+  display: flex; align-items: center; gap: 10px; padding: 4px 8px; margin-bottom: 4px;
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.party-row.selected { border-color: var(--accent); background: var(--card-hi); }
+.party-row img { height: 30px; width: 270px; object-fit: contain; object-position: left; }
+.party-row .party-name { flex: 1; font-size: 13px; }
+.party-row input[type=text] { flex: 1; }
+
 /* Selected states by role */
 .hero-chip.selected { background: var(--card-hi); }
 .hero-chip.selected.role-tank    { border-color: var(--tank);    color: var(--tank);    }

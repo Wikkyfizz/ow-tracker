@@ -1,7 +1,7 @@
 """
 Orchestrates OCR + icon matching into a single parsed match dict.
 Handles both OW2 screenshot tabs (1920×1080):
-  - TEAM tab:    player stats, identifies your row by first-row fallback
+  - TEAM tab:    player stats; your row comes from your name, or from a merge
   - SUMMARY tab: map, outcome, game length, date, game mode
 """
 from PIL import Image
@@ -13,11 +13,8 @@ def known_maps() -> list[str]:
         return [r["name"] for r in conn.execute("SELECT name FROM maps")]
 
 
-def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
-    from parser.ocr import detect_tab, extract_all_rows, find_my_row, extract_tracked_players, extract_summary
-
-    with get_conn() as conn:
-        tracked_players = [r["name"] for r in conn.execute("SELECT name FROM tracked_players").fetchall()]
+def parse_screenshot(path: str, username: str = "") -> dict:
+    from parser.ocr import detect_tab
 
     warnings = []
     img = Image.open(path)
@@ -27,12 +24,12 @@ def parse_screenshot(path: str, username: str = "DROWZY") -> dict:
     if tab == "SUMMARY":
         return _parse_summary_tab(img, warnings)
     if tab == "TEAM":
-        return _parse_team_tab(path, img, username, tracked_players, warnings)
+        return _parse_team_tab(path, img, username, warnings)
     if tab == "PERSONAL":
         return _parse_personal_tab(img, warnings)
 
     warnings.append("Could not auto-detect screenshot type; attempting TEAM tab parse")
-    return _parse_team_tab(path, img, username, tracked_players, warnings)
+    return _parse_team_tab(path, img, username, warnings)
 
 
 def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
@@ -90,22 +87,21 @@ def _parse_personal_tab(img: Image.Image, warnings: list) -> dict:
     }
 
 
-def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players: list, warnings: list) -> dict:
-    from parser.ocr import extract_all_rows, find_my_row, extract_tracked_players
+def _parse_team_tab(path: str, img: Image.Image, username: str, warnings: list) -> dict:
+    from parser.ocr import extract_all_rows
     from parser.icons import extract_heroes, _CSV_NAME_ALIASES
+    from parser.names import find_own_row
 
-    # Name OCR is only useful for matching tracked players (own name + CJK names
-    # otherwise read as ""). Skip it entirely when there's nobody to match.
-    all_rows   = extract_all_rows(img, read_names=bool(tracked_players))
+    all_rows   = extract_all_rows(img)
     my_rows    = all_rows["my_team"]
     enemy_rows = all_rows["enemy_team"]
 
-    my_row = find_my_row(my_rows, username)
-    if not my_row:
-        warnings.append("Could not locate any rows — stats left blank")
-
-    found_teammates = extract_tracked_players(my_rows, tracked_players)
-    stack_size = 1 + len(found_teammates)
+    # A merge with SUMMARY overrides this. Unknown means the stats stay blank to be
+    # filled in, rather than guessing a row and crediting someone else's numbers.
+    own_row = find_own_row(path, username)
+    my_row = my_rows[own_row] if own_row is not None else None
+    if own_row is None:
+        warnings.append("Couldn't find your name on the scoreboard — your stats are blank")
 
     icon_result  = extract_heroes(path)
     hero_warning = icon_result.get("warning", "")
@@ -114,9 +110,7 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
 
     raw_my    = icon_result.get("my_heroes",    [])
     raw_enemy = icon_result.get("enemy_heroes", [])
-    # The scoreboard gives us the FULL team comp (all 5 slots), but it can't tell
-    # which slot is the user: names OCR as blank (stylised nameplate + CJK names),
-    # so we cannot attribute a specific slot to "me". The 5 my-team heroes are the
+    # The scoreboard gives us the FULL team comp (all 5 slots). The 5 my-team heroes are the
     # team comp (→ my_team_heroes, used only to derive my_comp); the hero(es) the
     # user actually played are picked explicitly in the review step. This avoids
     # crediting teammates' heroes to the user's own hero win-rates.
@@ -154,8 +148,9 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
         "healing":       my_row.get("healing")    if my_row else None,
         "mitigation":    my_row.get("mitigation") if my_row else None,
         "team_rows":     {"my_team": my_rows, "enemy_team": enemy_rows},
-        "teammates":     found_teammates,
-        "stack_size":    stack_size,
+        "my_row":        own_row,
+        "teammates":     [],
+        "stack_size":    1,
         "confidence":    round(confidence, 2),
         "warnings":      warnings,
     }
@@ -164,15 +159,20 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, tracked_players:
 # ── Merging a SUMMARY + TEAM screenshot of one game ───────────────────────────
 
 _EAD = ("elims", "assists", "deaths")
-_MIN_MATCHING_STATS = 2  # of E/A/D; the TEAM grid misreads some, so 3/3 is too strict
+MIN_MATCHING_STATS = 2  # of E/A/D; the TEAM grid misreads some, so 3/3 is too strict
 
 
 def match_summary_row(summary: dict, team: dict) -> tuple[int, int | None]:
     """Compare SUMMARY's own E/A/D with each my-team row of a TEAM parse.
-    Returns (best score, row index). The row is None if two rows tie."""
+    Returns (best score, row index). The row is None if two rows tie. When the player's
+    name was found on the scoreboard only that row counts, so a coincidence on someone
+    else's row can't link two different games."""
     best, best_rows = 0, []
     rows = (team.get("team_rows") or {}).get("my_team", [])
+    own_row = team.get("my_row")
     for i, row in enumerate(rows):
+        if own_row is not None and i != own_row:
+            continue
         score = sum(summary.get(k) is not None and summary.get(k) == row.get(k) for k in _EAD)
         if score > best:
             best, best_rows = score, [i]
@@ -182,13 +182,15 @@ def match_summary_row(summary: dict, team: dict) -> tuple[int, int | None]:
 
 
 def is_same_game(summary: dict, team: dict) -> bool:
-    return match_summary_row(summary, team)[0] >= _MIN_MATCHING_STATS
+    return match_summary_row(summary, team)[0] >= MIN_MATCHING_STATS
 
 
 def merge_summary_team(summary: dict, team: dict) -> dict:
     """Combine both parses: SUMMARY supplies map/result/time/length and the player's
     E/A/D; TEAM supplies the comps and the player's DMG/H/MIT."""
-    _, row_idx = match_summary_row(summary, team)
+    score, row_idx = match_summary_row(summary, team)
+    if row_idx is None:
+        row_idx = team.get("my_row")
     merged = dict(team)
     for k in ("map", "outcome", "game_length_s", "played_at", "game_mode", "played_pcts"):
         merged[k] = summary.get(k)
@@ -197,7 +199,9 @@ def merge_summary_team(summary: dict, team: dict) -> dict:
 
     warnings = list(summary.get("warnings", []))
     warnings += [w for w in team.get("warnings", [])
-                 if not w.startswith(("Map and outcome", "Select the hero"))]
+                 if not w.startswith(("Map and outcome", "Select the hero", "Couldn't find your name"))]
+    if score < len(_EAD):
+        warnings.append(f"Linked to the Summary on {score} of {len(_EAD)} stats — check this is the same game")
 
     row = {}
     if row_idx is None:
@@ -224,11 +228,13 @@ def merge_summary_team(summary: dict, team: dict) -> dict:
 _ROW_STATS = ("elims", "assists", "deaths", "damage", "healing", "mitigation")
 
 
-def build_participants(parsed: dict, team_slots: dict = None, me_stats: dict = None) -> list[dict]:
+def build_participants(parsed: dict, team_slots: dict = None, me_stats: dict = None,
+                       team_names: dict = None) -> list[dict]:
     """The scoreboard as 10 rows. Slots keep their row number, so an unidentified hero
     leaves that row's hero list empty instead of shifting the rows below it.
     team_slots holds the heroes confirmed in the Queue; without it, the detected ones.
-    me_stats are the confirmed values for the player's own row, which beat raw OCR."""
+    me_stats are the confirmed values for the player's own row, which beat raw OCR.
+    team_names maps an ally row to the party member the user named there."""
     rows = parsed.get("team_rows") or {}
     slots = team_slots or {}
     sides = (("ally", "my", rows.get("my_team") or [], parsed.get("my_team_heroes") or []),
@@ -246,7 +252,7 @@ def build_participants(parsed: dict, team_slots: dict = None, me_stats: dict = N
             if is_me and me_stats:
                 stats.update({k: v for k, v in me_stats.items() if v is not None})
             participants.append({
-                "player_name": row.get("name") or "",
+                "player_name": (team_names or {}).get(str(i), "") if team == "ally" else "",
                 "team": team,
                 "heroes": [{"hero": hero, "pct": 100}] if hero and not hero.startswith("Unknown") else [],
                 "stats": stats,

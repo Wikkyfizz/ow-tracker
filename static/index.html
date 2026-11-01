@@ -286,16 +286,21 @@
     <div class="card">
       <h2>General</h2>
       <div class="form-group" style="margin-bottom:10px">
-        <label>BattleTag <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">e.g. Drowzy-11334</span></label>
+        <label>BattleTag <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">e.g. Name-12345</span></label>
         <input type="text" id="s-battletag" placeholder="Name-0000">
       </div>
       <div class="form-group" style="margin-bottom:10px">
         <label>Display Name <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">as shown in-game, for OCR</span></label>
-        <input type="text" id="s-username" placeholder="DROWZY">
+        <input type="text" id="s-username" placeholder="Your in-game name">
       </div>
       <div class="form-group" style="margin-bottom:14px">
         <label>Inbox Folder <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">ShareX destination</span></label>
         <input type="text" id="s-inbox" placeholder="C:\OW-Tracker\inbox">
+      </div>
+      <div class="form-group">
+        <label>Backup Folder (best on a different disk; runs at startup and daily)</label>
+        <input type="text" id="s-backup" placeholder="D:\OW-Tracker-backups">
+        <div id="s-backup-status" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary" id="s-save-btn">Save</button>
@@ -307,7 +312,7 @@
       <h2>Tracked Players</h2>
       <div id="tracked-list" style="margin-bottom:14px"></div>
       <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
-        <div class="form-group"><label>In-game name</label><input type="text" id="s-player-name" placeholder="DROWZY"></div>
+        <div class="form-group"><label>In-game name</label><input type="text" id="s-player-name" placeholder="Friend's in-game name"></div>
         <div class="form-group"><label>Alias</label><input type="text" id="s-player-alias" placeholder="Luke"></div>
       </div>
       <button class="btn btn-secondary btn-sm" id="s-add-player-btn">+ Add Player</button>
@@ -370,8 +375,12 @@
       </div>
 
       <div style="margin-top:16px">
-        <label>My Heroes (click to select, click % to cycle)</label>
+        <label>My Heroes (click to select, type the % played)</label>
         <div class="hero-list" id="m-my-heroes"></div>
+      </div>
+      <div style="margin-top:14px">
+        <label>In Your Party <span id="m-stack-label" style="color:var(--muted)"></span></label>
+        <div id="m-party"></div>
       </div>
       <div style="margin-top:14px">
         <label>Enemy Heroes</label>

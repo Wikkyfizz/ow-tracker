@@ -1,7 +1,6 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 let heroes = [], maps = [];
 let srChart = null, mapChart = null;
-const PCT_CYCLE = [100, 75, 50, 25];
 let baselineData = [];
 let baselineSortCol = 'playtime_pct';
 let baselineSortDir = 'desc';
@@ -19,6 +18,14 @@ let modalIsHistorical = false;
 let mModalMyHeroes = [];
 let mModalMyTeamHeroes = [];   // full my-team comp (drives my_comp); no chip UI, carried through
 let mModalTeamSlots = null;    // confirmed hero per scoreboard row (null = unknown), for match_participants
+let mModalPlayedPcts = [];     // Summary's % per hero card, handed out as heroes are picked
+let mModalPartyRows = [];      // ally scoreboard rows: {row, selected, name, known}
+let mModalPartyChips = [];     // names selected when there's no scoreboard to pick from
+let mModalShotFilename = null; // screenshot behind the party rows and the viewer
+let mModalMyRow = null;
+let editingMatchId = null;
+let editParticipants = null;
+let saveWarningShown = false;
 let mModalEnemyHeroes = [];
 let mModalBans = [];
 let practiceSelection = null;
@@ -160,6 +167,20 @@ function roleClass(role) {
   return { Tank: 'tank', Damage: 'dps', Support: 'support' }[role] || 'unknown';
 }
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// The next % Summary reported that a picked hero doesn't already have. Summary shows at
+// most 3 heroes, so a further pick takes whatever is left of 100.
+function nextPlayedPct(selectedArr) {
+  if (!mModalPlayedPcts.length) return 100;
+  const unused = [...mModalPlayedPcts];
+  selectedArr.forEach(e => { const i = unused.indexOf(e.pct); if (i >= 0) unused.splice(i, 1); });
+  if (unused.length) return unused[0];
+  return Math.max(1, 100 - selectedArr.reduce((s, e) => s + e.pct, 0));
+}
+
 function renderHeroChipList(containerId, selectedArr) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -174,23 +195,33 @@ function renderHeroChipList(containerId, selectedArr) {
 
     const dot = document.createElement('span'); dot.className = `role-dot ${rc}`;
     const label = document.createElement('span'); label.textContent = h.name;
-    const pctBadge = document.createElement('span');
-    pctBadge.className = 'pct-badge';
-    pctBadge.textContent = selected ? selected.pct + '%' : '100%';
+    chip.appendChild(dot); chip.appendChild(label);
 
-    chip.appendChild(dot); chip.appendChild(label); chip.appendChild(pctBadge);
-
-    chip.addEventListener('click', (e) => {
-      if (e.target === pctBadge && selectedArr.find(e => e.hero === h.name)) {
+    // Only my own heroes have a real playtime split, and it's rarely a round number.
+    const tracksPct = selectedArr === mModalMyHeroes;
+    let pctInput = null;
+    if (tracksPct) {
+      pctInput = document.createElement('input');
+      pctInput.type = 'number'; pctInput.min = 1; pctInput.max = 100;
+      pctInput.className = 'pct-input';
+      pctInput.value = selected ? selected.pct : 100;
+      pctInput.addEventListener('click', e => e.stopPropagation());
+      pctInput.addEventListener('input', () => {
         const entry = selectedArr.find(e => e.hero === h.name);
-        const idx = PCT_CYCLE.indexOf(entry.pct);
-        entry.pct = PCT_CYCLE[(idx + 1) % PCT_CYCLE.length];
-        pctBadge.textContent = entry.pct + '%';
-      } else {
-        const idx = selectedArr.findIndex(e => e.hero === h.name);
-        if (idx >= 0) { selectedArr.splice(idx, 1); chip.classList.remove('selected'); }
-        else { selectedArr.push({hero: h.name, pct: 100}); chip.classList.add('selected'); pctBadge.textContent = '100%'; }
-      }
+        const v = Math.round(Number(pctInput.value));
+        if (entry && v >= 1 && v <= 100) { entry.pct = v; saveWarningShown = false; }
+      });
+      chip.appendChild(pctInput);
+    }
+
+    chip.addEventListener('click', () => {
+      saveWarningShown = false;
+      const idx = selectedArr.findIndex(e => e.hero === h.name);
+      if (idx >= 0) { selectedArr.splice(idx, 1); chip.classList.remove('selected'); return; }
+      const pct = tracksPct ? nextPlayedPct(selectedArr) : 100;
+      selectedArr.push({hero: h.name, pct});
+      chip.classList.add('selected');
+      if (pctInput) pctInput.value = pct;
     });
     container.appendChild(chip);
   });
@@ -508,9 +539,22 @@ function buildSpine(matches) {
   return `<div class="momentum-spine">${pips}${streakHtml}</div>`;
 }
 
-function openEditMatch(id) {
-  // TODO: open modal pre-filled for editing — placeholder
-  console.log('Edit match', id);
+async function openEditMatch(id) {
+  const m = await api.get(`/api/matches/${id}`);
+  const shot = m.screenshot_path ? m.screenshot_path.split(/[\\/]/).pop() : null;
+  const me = (m.participants || []).find(p => p.is_me);
+  await openGameModal({
+    map: m.map, outcome: m.outcome, played_at: m.played_at, game_length_s: m.game_length_s,
+    elims: m.elims, deaths: m.deaths, assists: m.assists,
+    damage: m.damage, healing: m.healing, mitigation: m.mitigation,
+    my_heroes: JSON.parse(m.my_heroes || '[]'),
+    enemy_heroes: JSON.parse(m.enemy_heroes || '[]'),
+    teammates: JSON.parse(m.teammates || '[]'),
+    played_pcts: JSON.parse(m.raw_parse || '{}').played_pcts || [],
+    my_row: me ? me.slot : null,
+    _shotFilename: shot,
+    _edit: m,
+  }, !!m.is_historical);
 }
 
 // ── START SESSION ─────────────────────────────────────────────────────────────
@@ -586,6 +630,10 @@ async function openGameModal(prefill, isHistorical) {
   practiceSelection  = null;
   pendingQueueFilename  = prefill ? prefill._queueFilename  || null : null;
   pendingScreenshotPath = prefill ? prefill._screenshotPath || null : null;
+  editingMatchId     = prefill?._edit ? prefill._edit.id : null;
+  editParticipants   = prefill?._edit ? prefill._edit.participants : null;
+  mModalShotFilename = prefill ? prefill._shotFilename || prefill._queueFilename || null : null;
+  saveWarningShown   = false;
   resetModalScreenshotViewer();
 
   // Reset form
@@ -613,6 +661,10 @@ async function openGameModal(prefill, isHistorical) {
   mModalEnemyHeroes.length  = 0;
   mModalBans.length         = 0;
   mModalTeamSlots           = prefill?.team_slots || null;
+  mModalPlayedPcts          = prefill?.played_pcts || [];
+  mModalMyRow               = prefill?.my_row ?? null;
+  mModalPartyRows           = [];
+  mModalPartyChips          = [...(prefill?.teammates || [])];
 
   // Apply prefill
   if (prefill) {
@@ -638,6 +690,18 @@ async function openGameModal(prefill, isHistorical) {
     (prefill.my_team_heroes || []).forEach(h => mModalMyTeamHeroes.push(h));
     (prefill.enemy_heroes   || []).forEach(h => mModalEnemyHeroes.push(h));
 
+    if (prefill._edit) {
+      const e = prefill._edit;
+      document.getElementById('m-rank-tier').value = e.rank_tier || '';
+      document.getElementById('m-rank-div').value  = e.rank_division ?? '';
+      document.getElementById('m-rank-pct').value  = e.rank_pct ?? '';
+      document.getElementById('m-notes').value     = e.notes || '';
+      document.getElementById('m-practice-notes').value = e.practice_notes || '';
+      JSON.parse(e.bans || '[]').forEach(b => mModalBans.push(b));
+      practiceSelection = e.practiced || null;
+      document.querySelectorAll('.practice-btn').forEach(b => b.classList.toggle('selected', b.dataset.val === e.practiced));
+    }
+
     if ((prefill.warnings || []).length) {
       banner.textContent    = 'OCR: ' + prefill.warnings.join('; ');
       banner.style.display  = 'block';
@@ -649,9 +713,12 @@ async function openGameModal(prefill, isHistorical) {
   }
 
   buildModalHeroLists();
+  loadParty();
 
   // Title
-  document.getElementById('modal-title-text').textContent = isHistorical ? 'Add Historical Game' : 'Log Game';
+  document.getElementById('modal-title-text').textContent =
+    editingMatchId ? 'Edit Game' : (isHistorical ? 'Add Historical Game' : 'Log Game');
+  document.getElementById('modal-save-btn').textContent = editingMatchId ? 'Save Changes' : 'Save Game';
 
   // Practice section visibility
   const practiceSection = document.getElementById('modal-practice-section');
@@ -670,9 +737,112 @@ function closeGameModal() {
   document.getElementById('game-modal').style.display = 'none';
 }
 
+// ── Modal: who was in the party ──────────────────────────────────────────────
+async function loadParty() {
+  const openedFor = mModalShotFilename;
+  const el = document.getElementById('m-party');
+  el.innerHTML = '';
+  updateStackLabel();
+  const data = openedFor ? await api.get(`/api/screenshots/${encodeURIComponent(openedFor)}/allies`) : { rows: [] };
+  if (openedFor !== mModalShotFilename) return; // the modal moved on while this loaded
+  if (data.rows.length) {
+    const me = mModalMyRow ?? data.own_row;
+    // A game with a saved party keeps it; otherwise start from recognised names to confirm.
+    const savedByRow = Object.fromEntries((editParticipants || [])
+      .filter(p => p.team === 'ally' && p.player_name).map(p => [p.slot, p.player_name]));
+    mModalPartyRows = data.rows.filter(r => r.row !== me).map(r => {
+      const name = savedByRow[r.row] || r.player;
+      return {
+        row: r.row,
+        known: !!name,
+        name: name || r.suggestion || '',
+        selected: mModalPartyChips.length ? !!savedByRow[r.row] || mModalPartyChips.includes(r.player) : !!r.player,
+      };
+    });
+    renderPartyRows();
+    return;
+  }
+  renderPartyChips();
+}
+
+function renderPartyRows() {
+  const el = document.getElementById('m-party');
+  const fn = encodeURIComponent(mModalShotFilename);
+  el.innerHTML = mModalPartyRows.map((r, i) => `
+    <div class="party-row ${r.selected ? 'selected' : ''}" data-i="${i}">
+      <img src="/api/screenshots/${fn}/name/${r.row}" alt="">
+      ${r.selected && !r.known
+        ? `<input type="text" class="party-name-input" data-i="${i}" value="${escapeHtml(r.name)}" placeholder="Name">`
+        : `<span class="party-name">${r.known ? escapeHtml(r.name) : ''}</span>`}
+    </div>`).join('');
+  el.querySelectorAll('.party-row').forEach(rowEl => rowEl.addEventListener('click', () => {
+    const r = mModalPartyRows[rowEl.dataset.i];
+    r.selected = !r.selected;
+    renderPartyRows();
+    updateStackLabel();
+  }));
+  el.querySelectorAll('.party-name-input').forEach(input => {
+    input.addEventListener('click', e => e.stopPropagation());
+    input.addEventListener('input', () => { mModalPartyRows[input.dataset.i].name = input.value; });
+  });
+  updateStackLabel();
+}
+
+// No scoreboard to point at: choose from the people already on the user's list.
+async function renderPartyChips() {
+  const el = document.getElementById('m-party');
+  const { tracked_players: tracked = [] } = await api.get('/api/settings');
+  const names = [...new Set([...tracked.map(p => p.name), ...mModalPartyChips])];
+  if (!names.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--dim)">Nobody on your list yet. Friends get added when you mark them on a scoreboard, or in Settings.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="hero-list"></div>';
+  const list = el.firstChild;
+  names.forEach(name => {
+    const chip = document.createElement('div');
+    chip.className = 'hero-chip' + (mModalPartyChips.includes(name) ? ' selected' : '');
+    chip.textContent = name;
+    chip.addEventListener('click', () => {
+      const i = mModalPartyChips.indexOf(name);
+      if (i >= 0) mModalPartyChips.splice(i, 1); else mModalPartyChips.push(name);
+      chip.classList.toggle('selected');
+      updateStackLabel();
+    });
+    list.appendChild(chip);
+  });
+  updateStackLabel();
+}
+
+function selectedParty() {
+  if (mModalPartyRows.length) {
+    return mModalPartyRows.filter(r => r.selected).map(r => ({ row: r.row, name: r.name.trim() }));
+  }
+  return mModalPartyChips.map(name => ({ row: null, name }));
+}
+
+function updateStackLabel() {
+  const n = 1 + selectedParty().length;
+  document.getElementById('m-stack-label').textContent = n === 1 ? '(solo)' : `(stack of ${n})`;
+}
+
+function heroWarnings() {
+  const picks = mModalMyHeroes;
+  if (!picks.length) return ['No hero picked for you.'];
+  const warnings = [];
+  const total = picks.reduce((s, h) => s + h.pct, 0);
+  if (total < 95 || total > 103) warnings.push(`Your hero % adds up to ${total}.`);
+  if (mModalPlayedPcts.length) {
+    const sorted = picks.map(h => h.pct).sort((a, b) => b - a);
+    const differs = mModalPlayedPcts.some((p, i) => sorted[i] == null || Math.abs(sorted[i] - p) > 1);
+    if (differs) warnings.push(`Summary shows ${mModalPlayedPcts.join(' + ')}%.`);
+  }
+  return warnings;
+}
+
 // ── Modal source-screenshot viewer ───────────────────────────────────────────
 function modalScreenshotUrl() {
-  return `/api/queue/${encodeURIComponent(pendingQueueFilename)}/image`;
+  return `/api/queue/${encodeURIComponent(mModalShotFilename)}/image`;
 }
 
 function resetModalScreenshotViewer() {
@@ -681,7 +851,7 @@ function resetModalScreenshotViewer() {
   section.classList.remove('open');
   img.removeAttribute('src');
   // Only offer the viewer when the game came from a queued screenshot
-  section.style.display = pendingQueueFilename ? 'block' : 'none';
+  section.style.display = mModalShotFilename ? 'block' : 'none';
 }
 
 document.getElementById('modal-screenshot-toggle').addEventListener('click', () => {
@@ -689,13 +859,13 @@ document.getElementById('modal-screenshot-toggle').addEventListener('click', () 
   const img     = document.getElementById('modal-screenshot-img');
   section.classList.toggle('open');
   // Lazy-load on first expand
-  if (section.classList.contains('open') && !img.getAttribute('src') && pendingQueueFilename) {
+  if (section.classList.contains('open') && !img.getAttribute('src') && mModalShotFilename) {
     img.src = modalScreenshotUrl();
   }
 });
 
 document.getElementById('modal-screenshot-img').addEventListener('click', () => {
-  if (pendingQueueFilename) window.open(modalScreenshotUrl(), '_blank');
+  if (mModalShotFilename) window.open(modalScreenshotUrl(), '_blank');
 });
 
 document.getElementById('modal-close-btn').addEventListener('click',  closeGameModal);
@@ -724,6 +894,22 @@ async function saveModalGame() {
     return;
   }
 
+  const party = selectedParty();
+  if (party.some(p => !p.name)) {
+    msgEl.textContent = 'Type a name for everyone marked as in your party.';
+    msgEl.style.color = 'var(--loss)';
+    return;
+  }
+
+  // Warn once; a second click means they've seen it and want to save anyway.
+  const warnings = heroWarnings();
+  if (warnings.length && !saveWarningShown) {
+    saveWarningShown = true;
+    msgEl.textContent = `${warnings.join(' ')} Click save again to keep it anyway.`;
+    msgEl.style.color = 'var(--gold)';
+    return;
+  }
+
   const rankTier = document.getElementById('m-rank-tier').value;
   const rankDiv  = document.getElementById('m-rank-div').value;
   const rankPct  = document.getElementById('m-rank-pct').value;
@@ -735,6 +921,8 @@ async function saveModalGame() {
     my_team_heroes: mModalMyTeamHeroes,
     enemy_heroes:   mModalEnemyHeroes,
     team_slots:     mModalTeamSlots,
+    teammates:      party.map(p => p.name),
+    team_names:     Object.fromEntries(party.filter(p => p.row != null).map(p => [p.row, p.name])),
     bans:          mModalBans,
     rank_tier:     rankTier || '',
     rank_division: rankDiv  ? parseInt(rankDiv)     : null,
@@ -750,7 +938,7 @@ async function saveModalGame() {
     screenshot_path: pendingScreenshotPath || '',
     data_source:   'manual',
     is_historical: modalIsHistorical,
-    practiced:     (activeSession && !modalIsHistorical) ? practiceSelection : null,
+    practiced:     (editingMatchId || (activeSession && !modalIsHistorical)) ? practiceSelection : null,
     practice_notes: document.getElementById('m-practice-notes').value,
   };
   // Send the local wall-clock time as-is (naive). The whole app stores naive
@@ -758,6 +946,27 @@ async function saveModalGame() {
   // datetime.now()); converting to UTC here would shift games by the tz offset.
   if (datetimeVal) payload.played_at = datetimeVal.length === 16 ? datetimeVal + ':00' : datetimeVal;
   if (activeSession && !modalIsHistorical) payload.session_id = activeSession.id;
+
+  // Before the save below, which archives the screenshot these crops come from.
+  const newlyMarked = mModalPartyRows.filter(r => r.selected);
+  await Promise.all(newlyMarked.map(r => api.post('/api/players/remember', {
+    filename: mModalShotFilename, row: r.row, name: r.name.trim(),
+  }).catch(() => null)));
+
+  if (editingMatchId) {
+    const edited = await api.put(`/api/matches/${editingMatchId}`, payload);
+    if (!edited.ok) {
+      msgEl.textContent = JSON.stringify(edited);
+      msgEl.style.color = 'var(--loss)';
+      return;
+    }
+    msgEl.textContent = `Game #${editingMatchId} updated.`;
+    msgEl.style.color = 'var(--win)';
+    Object.keys(analyticsLoaded).forEach(k => delete analyticsLoaded[k]);
+    loadHistory();
+    setTimeout(closeGameModal, 600);
+    return;
+  }
 
   // Save hero templates BEFORE the match POST: when screenshot_path is set the
   // server dequeues the item and archives the file, which would break the
@@ -1637,6 +1846,11 @@ async function loadSettings() {
   document.getElementById('s-battletag').value = settingsData.battletag || '';
   document.getElementById('s-username').value  = settingsData.username  || '';
   document.getElementById('s-inbox').value     = settingsData.inbox_folder || '';
+  document.getElementById('s-backup').value    = settingsData.backup_folder || '';
+  const backup = await api.get('/api/backup');
+  document.getElementById('s-backup-status').textContent = backup.error
+    ? backup.error
+    : `Last backup ${new Date(backup.at).toLocaleString()} (${backup.files_copied} new files).`;
   renderTrackedPlayers();
   loadMapConfig();
 }
@@ -1646,9 +1860,9 @@ function renderTrackedPlayers() {
   const players = settingsData.tracked_players || [];
   el.innerHTML  = players.map(p =>
     `<div class="tracked-player-row">
-       <span class="tracked-player-name">${p.name}</span>
-       <span class="tracked-player-alias">${p.alias || ''}</span>
-       <button class="btn btn-secondary btn-sm" onclick="removeTrackedPlayer('${p.name}')">✕</button>
+       <span class="tracked-player-name">${escapeHtml(p.name)}</span>
+       <span class="tracked-player-alias">${escapeHtml(p.alias || '')}</span>
+       <button class="btn btn-secondary btn-sm" data-player="${escapeHtml(p.name)}" onclick="removeTrackedPlayer(this.dataset.player)">✕</button>
      </div>`
   ).join('') || '<p style="color:var(--muted);font-size:13px">No tracked players yet.</p>';
 }
@@ -1657,6 +1871,7 @@ async function saveSettings() {
   settingsData.battletag    = document.getElementById('s-battletag').value;
   settingsData.username     = document.getElementById('s-username').value;
   settingsData.inbox_folder = document.getElementById('s-inbox').value;
+  settingsData.backup_folder = document.getElementById('s-backup').value;
   return api.put('/api/settings', settingsData);
 }
 

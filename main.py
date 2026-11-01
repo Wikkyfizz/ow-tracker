@@ -21,8 +21,11 @@ from parser.pipeline import build_participants
 SETTINGS_PATH = Path(os.environ.get("OW_TRACKER_SETTINGS") or (Path(__file__).parent / "settings.json"))
 QUEUE_PATH = Path(os.environ.get("OW_TRACKER_QUEUE") or (Path(__file__).parent / "inbox_queue.json"))
 _queue_lock = threading.Lock()
+_settings_lock = threading.Lock()
 _watcher_thread = None
 _observer = None
+_last_backup = {}
+BACKUP_INTERVAL_S = 24 * 3600
 
 
 # ── Startup / shutdown ────────────────────────────────────────────────────────
@@ -31,6 +34,7 @@ _observer = None
 async def lifespan(app: FastAPI):
     db.init_db()
     _start_watcher()
+    threading.Thread(target=_backup_loop, daemon=True).start()
     yield
 
 
@@ -39,26 +43,41 @@ app = FastAPI(title="OW Tracker", lifespan=lifespan)
 
 # ── Settings helpers ──────────────────────────────────────────────────────────
 
+def _write_json(path: Path, data):
+    """Replace the file in one step, so a reader or a crash never sees half of it.
+    Windows refuses the swap while another thread has the file open for an instant."""
+    tmp = path.with_name(f"{path.name}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.02)
+
+
 def load_settings() -> dict:
     if SETTINGS_PATH.exists():
-        return json.loads(SETTINGS_PATH.read_text())
-    return {"username": "DROWZY", "inbox_folder": "C:\\OW-Tracker\\inbox", "tracked_players": []}
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    return {"username": "", "inbox_folder": "C:\\OW-Tracker\\inbox", "backup_folder": "", "tracked_players": []}
 
 
 def save_settings(s: dict):
-    SETTINGS_PATH.write_text(json.dumps(s, indent=2))
+    _write_json(SETTINGS_PATH, s)
 
 
 # ── Queue helpers ─────────────────────────────────────────────────────────────
 
 def load_queue() -> list:
     if QUEUE_PATH.exists():
-        return json.loads(QUEUE_PATH.read_text())
+        return json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
     return []
 
 
 def save_queue(q: list):
-    QUEUE_PATH.write_text(json.dumps(q, indent=2))
+    _write_json(QUEUE_PATH, q)
 
 
 def queue_add(item: dict):
@@ -164,8 +183,10 @@ def _is_duplicate(parsed: dict, other: dict) -> bool:
 
 
 def _find_merge_partner(queue: list, item: dict):
-    """The closest-in-time queued screenshot that is the other half of this game."""
-    from parser.pipeline import is_same_game
+    """The queued screenshot most likely to be the other half of this game: the best
+    stat match, then the closest in time. A coincidental 2 of 3 from a nearer screenshot
+    must not beat a true 3 of 3."""
+    from parser.pipeline import MIN_MATCHING_STATS, match_summary_row
     tab = item["parsed"].get("tab_type")
     wanted = {"SUMMARY": "TEAM", "TEAM": "SUMMARY"}.get(tab)
     if not wanted:
@@ -175,12 +196,14 @@ def _find_merge_partner(queue: list, item: dict):
         if q.get("parsed", {}).get("tab_type") == wanted and not q["parsed"].get("merged")
         and q.get("captured_at") and abs(q["captured_at"] - item["captured_at"]) <= MERGE_WINDOW_S
     ]
-    candidates.sort(key=lambda q: abs(q["captured_at"] - item["captured_at"]))
-    for q in candidates:
+    def stat_score(q):
         summary, team = (item, q) if tab == "SUMMARY" else (q, item)
-        if is_same_game(summary["parsed"], team["parsed"]):
-            return q
-    return None
+        return match_summary_row(summary["parsed"], team["parsed"])[0]
+    scored = [(stat_score(q), q) for q in candidates]
+    scored = [(s, q) for s, q in scored if s >= MIN_MATCHING_STATS]
+    if not scored:
+        return None
+    return min(scored, key=lambda sq: (-sq[0], abs(sq[1]["captured_at"] - item["captured_at"])))[1]
 
 
 def _warn_if_already_logged(parsed: dict):
@@ -231,7 +254,7 @@ def _handle_new_screenshot(path: str):
     from parser.pipeline import parse_screenshot
     settings = load_settings()
     try:
-        result = parse_screenshot(path, username=settings.get("username", "DROWZY"))
+        result = parse_screenshot(path, username=settings.get("username", ""))
         _enqueue_screenshot({
             "filename": Path(path).name,
             "path": path,
@@ -297,7 +320,11 @@ def create_match(body: MatchCreate):
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)
 
         session_id = body.session_id
-        if session_id is None and not body.is_historical:
+        if body.is_historical:
+            session_id = None
+        elif body.played_at:
+            session_id = _session_for_time(conn, body.played_at)
+        elif session_id is None:
             session_id = _resolve_session(conn)
 
         # Timestamps are naive LOCAL time throughout (OCR reads the game's local
@@ -315,7 +342,8 @@ def create_match(body: MatchCreate):
             me_stats = {k: getattr(body, k)
                         for k in ("elims", "assists", "deaths", "damage", "healing", "mitigation")}
             participants = [MatchParticipant(**p)
-                            for p in build_participants(parsed, body.team_slots, me_stats)]
+                            for p in build_participants(parsed, body.team_slots, me_stats, body.team_names)]
+        stack_size = 1 + len(body.teammates) if body.teammates else body.stack_size
 
         cur = conn.execute(
             """INSERT INTO matches
@@ -339,18 +367,13 @@ def create_match(body: MatchCreate):
                 body.notes, body.tags,
                 json.dumps(body.bans),
                 json.dumps(body.teammates),
-                body.stack_size,
+                stack_size,
                 body.screenshot_path, "screenshot" if parsed else body.data_source,
                 body.practiced, body.practice_notes, int(body.is_historical),
                 json.dumps(parsed) if parsed else "",
             ),
         )
         match_id = cur.lastrowid
-        if body.screenshot_path:
-            queue_remove(filename)
-            _archive_screenshot(body.screenshot_path, "processed")
-            if item and item.get("linked_path"):
-                _archive_screenshot(item["linked_path"], "processed")
         if participants:
             conn.executemany(
                 """INSERT INTO match_participants
@@ -361,6 +384,12 @@ def create_match(body: MatchCreate):
                   json.dumps(p.stats), p.name_confidence, p.slot, int(p.is_me))
                  for p in participants]
             )
+    # Only once the game is committed: a failed save must leave its queue item and files.
+    if body.screenshot_path:
+        queue_remove(filename)
+        _archive_screenshot(body.screenshot_path, "processed")
+        if item and item.get("linked_path"):
+            _archive_screenshot(item["linked_path"], "processed")
     return {"id": match_id}
 
 
@@ -379,27 +408,34 @@ def get_match(match_id: int):
 @app.put("/api/matches/{match_id}")
 def update_match(match_id: int, body: MatchUpdate):
     with db.get_conn() as conn:
-        existing = conn.execute("SELECT id FROM matches WHERE id=?", (match_id,)).fetchone()
+        existing = conn.execute("SELECT * FROM matches WHERE id=?", (match_id,)).fetchone()
         if not existing:
             raise HTTPException(404, "Match not found")
         archetypes = db.hero_archetypes(conn)
         roles = db.hero_roles(conn)
-        my_comp_names = [e.hero for e in (body.my_team_heroes or body.my_heroes)]
-        my_comp = body.my_comp or db.derive_comp(my_comp_names, archetypes, roles)
+        # Saved games don't keep the team's hero list on this row, so re-deriving from
+        # my_heroes alone would turn a team comp into a comp of the player's picks.
+        my_comp = body.my_comp or existing["my_comp"]
+        if body.my_team_heroes:
+            my_comp = db.derive_comp([e.hero for e in body.my_team_heroes], archetypes, roles)
+        elif not my_comp:
+            my_comp = db.derive_comp([e.hero for e in body.my_heroes], archetypes, roles)
         enemy_comp = body.enemy_comp or db.derive_comp([e.hero for e in body.enemy_heroes], archetypes, roles)
+        stack_size = 1 + len(body.teammates) if body.teammates else 1
+        played_at = body.played_at.isoformat() if body.played_at else existing["played_at"]
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)
         conn.execute(
             """UPDATE matches SET
-               map=?, outcome=?, my_heroes=?, enemy_heroes=?, my_comp=?, enemy_comp=?,
+               played_at=?, map=?, outcome=?, my_heroes=?, enemy_heroes=?, my_comp=?, enemy_comp=?,
                rank_tier=?, rank_division=?, rank_pct=?, rank_score=?,
                elims=?, deaths=?, assists=?, damage=?, healing=?, mitigation=?,
                game_length_s=?, notes=?, tags=?, bans=?, teammates=?, stack_size=?,
-               data_source=?
+               practiced=?, practice_notes=?
                WHERE id=?""",
             (
-                body.map, body.outcome,
+                played_at, body.map, body.outcome,
                 json.dumps([e.dict() for e in body.my_heroes]),
                 json.dumps([e.dict() for e in body.enemy_heroes]),
                 my_comp, enemy_comp,
@@ -407,10 +443,22 @@ def update_match(match_id: int, body: MatchUpdate):
                 body.elims, body.deaths, body.assists,
                 body.damage, body.healing, body.mitigation,
                 body.game_length_s, body.notes, body.tags,
-                json.dumps(body.bans), json.dumps(body.teammates), body.stack_size,
-                body.data_source, match_id,
+                json.dumps(body.bans), json.dumps(body.teammates), stack_size,
+                body.practiced, body.practice_notes, match_id,
             ),
         )
+        # Keep the player's scoreboard row in step with the corrected numbers.
+        me = conn.execute("SELECT id, stats FROM match_participants WHERE match_id=? AND is_me=1",
+                          (match_id,)).fetchone()
+        if me:
+            confirmed = {k: getattr(body, k) for k in ("elims", "assists", "deaths", "damage", "healing", "mitigation")}
+            stats = {**json.loads(me["stats"]), **{k: v for k, v in confirmed.items() if v is not None}}
+            conn.execute("UPDATE match_participants SET stats=? WHERE id=?", (json.dumps(stats), me["id"]))
+        if body.team_names is not None:
+            conn.execute("UPDATE match_participants SET player_name='' WHERE match_id=? AND team='ally'", (match_id,))
+            for row, name in body.team_names.items():
+                conn.execute("UPDATE match_participants SET player_name=? WHERE match_id=? AND team='ally' AND slot=?",
+                             (name, match_id, int(row)))
     return {"ok": True}
 
 
@@ -447,13 +495,7 @@ def parse_file_manual(body: dict):
     return {"ok": True}
 
 
-@app.get("/api/queue/{filename}/image")
-def get_queue_screenshot(filename: str):
-    """Serve the full source screenshot for a queue item (spot-check OCR results).
-
-    Falls back to the inbox and its processed/discarded archives so the image
-    stays viewable right after the item is dequeued.
-    """
+def _find_screenshot(filename: str):
     safe_name = Path(filename).name  # block path traversal
     candidates = []
     item = next((i for i in load_queue() if i["filename"] == safe_name), None)
@@ -461,7 +503,58 @@ def get_queue_screenshot(filename: str):
         candidates.append(Path(item["path"]))
     inbox = Path(load_settings().get("inbox_folder", "C:\\OW-Tracker\\inbox"))
     candidates += [inbox / safe_name, inbox / "processed" / safe_name, inbox / "discarded" / safe_name]
-    path = next((p for p in candidates if p.exists()), None)
+    return next((p for p in candidates if p.is_file()), None)
+
+
+@app.get("/api/screenshots/{filename}/allies")
+def get_screenshot_allies(filename: str):
+    """Each ally row of a scoreboard: the tracked player it matches, or a suggested name."""
+    from parser.names import identify_allies
+    path = _find_screenshot(filename)
+    if path is None:
+        return {"rows": [], "own_row": None}
+    settings = load_settings()
+    players = [p["name"] for p in settings.get("tracked_players", [])]
+    return identify_allies(str(path), players, settings.get("username", ""))
+
+
+@app.get("/api/screenshots/{filename}/name/{row}")
+def get_name_image(filename: str, row: int):
+    from parser.names import row_image_png
+    path = _find_screenshot(filename)
+    png = row_image_png(str(path), row) if path else None
+    if png is None:
+        raise HTTPException(404, "Name not found")
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.post("/api/players/remember")
+def remember_player(body: dict):
+    """Record that a scoreboard row is this party member, adding them to the user's list."""
+    from parser.names import remember_player as save_template
+    filename, row, name = body.get("filename", ""), body.get("row"), (body.get("name") or "").strip()
+    path = _find_screenshot(filename)
+    if path is None or row is None or not name:
+        raise HTTPException(400, "filename, row and name are all required")
+    with _settings_lock:
+        settings = load_settings()
+        players = settings.setdefault("tracked_players", [])
+        if not any(p["name"] == name for p in players):
+            players.append({"name": name, "alias": ""})
+            save_settings(settings)
+            with db.get_conn() as conn:
+                conn.execute("INSERT OR IGNORE INTO tracked_players (name, alias) VALUES (?, '')", (name,))
+    return {"ok": True, "template_saved": save_template(str(path), int(row), name)}
+
+
+@app.get("/api/queue/{filename}/image")
+def get_queue_screenshot(filename: str):
+    """Serve the full source screenshot for a queue item (spot-check OCR results).
+
+    Falls back to the inbox and its processed/discarded archives so the image
+    stays viewable right after the item is dequeued.
+    """
+    path = _find_screenshot(filename)
     if path is None:
         raise HTTPException(404, "Screenshot not found")
     media = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
@@ -639,11 +732,14 @@ def get_settings():
 
 @app.put("/api/settings")
 def update_settings(body: Settings):
-    s = load_settings()
-    s["username"] = body.username
-    s["inbox_folder"] = body.inbox_folder
-    s["tracked_players"] = [p.dict() for p in body.tracked_players]
-    save_settings(s)
+    with _settings_lock:
+        s = load_settings()
+        s["username"] = body.username
+        s["battletag"] = body.battletag
+        s["inbox_folder"] = body.inbox_folder
+        s["backup_folder"] = body.backup_folder
+        s["tracked_players"] = [p.dict() for p in body.tracked_players]
+        save_settings(s)
     # sync to DB
     with db.get_conn() as conn:
         conn.execute("DELETE FROM tracked_players")
@@ -652,6 +748,41 @@ def update_settings(body: Settings):
             [(p.name, p.alias) for p in body.tracked_players],
         )
     return {"ok": True}
+
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+
+def _run_backup() -> dict:
+    from backup import run_backup
+    from parser.names import NAMES_DIR
+    settings = load_settings()
+    folder = settings.get("backup_folder", "")
+    if not folder:
+        return {"error": "No backup folder set"}
+    try:
+        result = run_backup(folder, db.DB_PATH, Path(settings.get("inbox_folder", "")), SETTINGS_PATH, NAMES_DIR)
+    except Exception as e:
+        print(f"[backup] failed: {e}")
+        result = {"error": str(e), "at": datetime.now().isoformat(timespec="seconds")}
+    _last_backup.clear()
+    _last_backup.update(result)
+    return result
+
+
+def _backup_loop():
+    while True:
+        _run_backup()
+        time.sleep(BACKUP_INTERVAL_S)
+
+
+@app.get("/api/backup")
+def get_backup_status():
+    return _last_backup or {"error": "No backup has run yet"}
+
+
+@app.post("/api/backup")
+def backup_now():
+    return _run_backup()
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
@@ -769,7 +900,7 @@ def get_session(session_id: int):
 async def fetch_baseline():
     import httpx
     settings = load_settings()
-    battletag = settings.get("battletag") or settings.get("username", "DROWZY")
+    battletag = settings.get("battletag") or settings.get("username", "")
 
     async with httpx.AsyncClient(timeout=15) as client:
         try:
@@ -850,13 +981,30 @@ async def parse_upload(file: UploadFile = File(...)):
         tmp_path = tmp.name
     try:
         settings = load_settings()
-        result = parse_screenshot(tmp_path, username=settings.get("username", "DROWZY"))
+        result = parse_screenshot(tmp_path, username=settings.get("username", ""))
     finally:
         os.unlink(tmp_path)
     return result
 
 
 # ── Session resolution ────────────────────────────────────────────────────────
+
+SESSION_START_GRACE_S = 3600  # people often hit Start a game or two into a sitting
+
+
+def _session_for_time(conn, played_at: datetime):
+    """The session a game belongs to by when it was played, not when it was confirmed.
+    Otherwise confirming yesterday's screenshot files it under today's session."""
+    rows = conn.execute(
+        "SELECT id, started_at, ended_at FROM sessions WHERE started_at IS NOT NULL ORDER BY started_at DESC"
+    ).fetchall()
+    for s in rows:
+        started = datetime.fromisoformat(s["started_at"])
+        ended = datetime.fromisoformat(s["ended_at"]) if s["ended_at"] else datetime.now()
+        if (started - played_at).total_seconds() <= SESSION_START_GRACE_S and played_at <= ended:
+            return s["id"]
+    return None
+
 
 def _resolve_session(conn):
     """Return the active session id, or None if no session is running."""

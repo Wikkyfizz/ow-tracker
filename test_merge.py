@@ -1,4 +1,5 @@
 """Checks for the SUMMARY + TEAM merge logic. Run: venv/Scripts/python.exe test_merge.py"""
+from main import _find_merge_partner
 from parser.pipeline import build_participants, is_same_game, match_summary_row, merge_summary_team
 
 
@@ -91,6 +92,51 @@ def test_an_unmerged_team_screenshot_marks_no_row_as_me():
 
 def test_a_summary_only_parse_has_no_participants():
     assert build_participants({"tab_type": "SUMMARY", "my_team_heroes": [], "enemy_heroes": []}) == []
+
+
+def test_party_names_land_on_their_ally_rows_only():
+    rows = build_participants(scoreboard(), None, None, {"2": "Someone"})
+    assert [p["player_name"] for p in rows] == ["", "", "Someone", ""]
+
+
+def queued(tab, captured_at, **parsed):
+    return {"filename": f"{tab}{captured_at}.png", "captured_at": captured_at,
+            "parsed": {"tab_type": tab, **parsed}}
+
+
+def test_a_true_match_beats_a_closer_coincidence():
+    item = queued("SUMMARY", 1000, **summary(16, 3, 5))
+    coincidence = queued("TEAM", 990, team_rows={"my_team": [row(16, 3, 9)]})  # 2 of 3, 10s away
+    true_team = queued("TEAM", 700, team_rows={"my_team": [row(16, 3, 5)]})    # 3 of 3, 5min away
+    assert _find_merge_partner([coincidence, true_team], item) is true_team
+
+
+def test_a_closer_screenshot_wins_a_tie():
+    item = queued("SUMMARY", 1000, **summary(16, 3, 5))
+    older = queued("TEAM", 700, team_rows={"my_team": [row(16, 3, 5)]})
+    nearer = queued("TEAM", 990, team_rows={"my_team": [row(16, 3, 5)]})
+    assert _find_merge_partner([older, nearer], item) is nearer
+
+
+def test_a_two_of_three_link_warns():
+    merged = merge_summary_team(summary(17, 3, 9), team(row(7, 3, 9)))
+    assert any("2 of 3" in w for w in merged["warnings"])
+
+
+def test_a_row_found_by_name_survives_a_tied_stat_match():
+    t = team(row(10, 2, 5, dmg=1), row(10, 2, 7, dmg=2))
+    t["my_row"] = 1
+    merged = merge_summary_team(summary(10, 2, 1), t)
+    assert merged["my_row"] == 1 and merged["damage"] == 2
+
+
+def test_a_coincidence_on_someone_elses_row_is_not_a_link():
+    # Real case: a Summary (17/3/9) whose scoreboard was missing matched a teammate
+    # 2 of 3 in another game.
+    t = team(row(25, 4, 3), row(17, 3, 5))
+    assert is_same_game(summary(17, 3, 9), t)
+    t["my_row"] = 0
+    assert not is_same_game(summary(17, 3, 9), t)
 
 
 if __name__ == "__main__":

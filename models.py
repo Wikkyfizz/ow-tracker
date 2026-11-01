@@ -65,6 +65,8 @@ class MatchCreate(BaseModel):
     participants: list[MatchParticipant] = []
     # Confirmed hero per scoreboard row, {"my": [...], "enemy": [...]}; null = unknown.
     team_slots: Optional[dict] = None
+    # Who was in the player's party, by ally scoreboard row where known: {"1": "Name"}.
+    team_names: Optional[dict] = None
 
 
 class MatchUpdate(MatchCreate):
@@ -91,9 +93,10 @@ class TrackedPlayer(BaseModel):
 
 
 class Settings(BaseModel):
-    username: str = "DROWZY"
+    username: str = ""
     battletag: str = ""
     inbox_folder: str = "C:\\OW-Tracker\\inbox"
+    backup_folder: str = ""
     tracked_players: list[TrackedPlayer] = []
 
 

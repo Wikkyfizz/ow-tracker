@@ -43,8 +43,6 @@ STAT_COLS_FRAC = {
     "healing":     (1204 / _REF_W, 1296 / _REF_W),
     "mitigation":  (1296 / _REF_W, 1430 / _REF_W),
 }
-NAME_X_START_FRAC = 150 / _REF_W
-NAME_X_END_FRAC   = 900 / _REF_W
 
 # Hero portrait face crop (x only; y uses row centres above)
 PORTRAIT_X_FRAC = (558 / _REF_W, 628 / _REF_W)   # (x1_frac, x2_frac)
@@ -107,8 +105,6 @@ MY_TEAM_ROW_Y    = [int(f * _REF_H) for f in MY_TEAM_ROW_Y_FRAC]
 ENEMY_TEAM_ROW_Y = [int(f * _REF_H) for f in ENEMY_TEAM_ROW_Y_FRAC]
 ROW_HALF_H       = int(ROW_HALF_H_FRAC * _REF_H)
 STAT_COLS        = {k: (int(x1 * _REF_W), int(x2 * _REF_W)) for k, (x1, x2) in STAT_COLS_FRAC.items()}
-NAME_X_START     = int(NAME_X_START_FRAC * _REF_W)
-NAME_X_END       = int(NAME_X_END_FRAC   * _REF_W)
 
 # ── SUMMARY tab layout (new 3-panel layout, OW2 Season 16+) ──────────────────
 #
@@ -433,20 +429,16 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
     return out
 
 
-def extract_all_rows(img: Image.Image, read_names: bool = True) -> dict:
+def extract_all_rows(img: Image.Image) -> dict:
     """
     Extract stats for all 10 players from a TEAM tab screenshot.
     Returns {"my_team": [...], "enemy_team": [...]}.
-    Each row: {name, elims, assists, deaths, damage, healing, mitigation}.
+    Each row: {elims, assists, deaths, damage, healing, mitigation}.
 
     Fast path: one Tesseract pass per 5-row team block bins all numbers by row
     and column. Only cells that come back empty (e.g. dim "0", the gold
     own-player row) fall back to the multi-strategy per-cell _ocr_number.
-
-    read_names=False skips per-row name OCR entirely — the scoreboard renders
-    the own player's name as a stylised banner and most others as CJK text, both
-    of which Tesseract reads as "", so name OCR is ~2s of dead work unless there
-    are tracked players to match against.
+    Names are handled by parser.names, not here.
     """
     def _read_rows(row_ys):
         fast_rows = _ocr_team_numbers_fast(img, row_ys)
@@ -458,38 +450,15 @@ def extract_all_rows(img: Image.Image, read_names: bool = True) -> dict:
                 if v is None:
                     v = _ocr_number(img, (xl, row_y - ROW_HALF_H, xr, row_y + ROW_HALF_H))
                 row[s] = v
-            row["name"] = (_ocr_line(img, (NAME_X_START, row_y - ROW_HALF_H, NAME_X_END, row_y + ROW_HALF_H))
-                           if read_names else "")
             rows.append(row)
         return rows
 
     return {"my_team": _read_rows(MY_TEAM_ROW_Y), "enemy_team": _read_rows(ENEMY_TEAM_ROW_Y)}
 
 
-def find_my_row(rows: list[dict], username: str) -> dict | None:
-    """OW2 always puts your own row first. Name matching used as confirmation only."""
-    if not rows:
-        return None
-    username_lower = username.lower()
-    for row in rows:
-        if _fuzzy_score(username_lower, row.get("name", "").lower()) > 0.5:
-            return row
-    return rows[0]
-
-
 def extract_player_rows(img: Image.Image, team: str = "my") -> list[dict]:
     result = extract_all_rows(img)
     return result["my_team"] if team == "my" else result["enemy_team"]
-
-
-def extract_tracked_players(rows: list[dict], tracked: list[str]) -> list[str]:
-    found = []
-    for name in tracked:
-        for row in rows:
-            if name.lower() in row.get("name", "").lower():
-                found.append(name)
-                break
-    return found
 
 
 # ── PERSONAL tab (stub — full parse is a future feature) ─────────────────────

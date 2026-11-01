@@ -17,3 +17,8 @@ inbox/
 
 # Disposable mock-render screenshots (regenerate via Edge headless)
 docs/mockups/_preview-*.png
+
+# Per-user data: never publish other players' names or local paths.
+settings.json
+player_names/
+*.tmp
