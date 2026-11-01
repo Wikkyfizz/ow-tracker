@@ -13,8 +13,9 @@ from fastapi.responses import JSONResponse, Response
 
 import db
 import analytics
-from models import (MatchCreate, MatchUpdate, MapUpdate, TrackedPlayer, Settings, ParsedMatch,
-                    SessionCreate, SessionUpdate)
+from models import (MatchCreate, MatchParticipant, MatchUpdate, MapUpdate, TrackedPlayer, Settings,
+                    ParsedMatch, SessionCreate, SessionUpdate)
+from parser.pipeline import build_participants
 
 # OW_TRACKER_SETTINGS / OW_TRACKER_QUEUE let the e2e harness isolate state (see e2e/).
 SETTINGS_PATH = Path(os.environ.get("OW_TRACKER_SETTINGS") or (Path(__file__).parent / "settings.json"))
@@ -304,6 +305,18 @@ def create_match(body: MatchCreate):
         # stay in one frame. Do not mix in UTC here.
         played_at = body.played_at or datetime.now()
 
+        # The queue item holds the parse as OCR read it. Keeping it is what lets OCR
+        # accuracy be measured later against what was confirmed here.
+        filename = Path(body.screenshot_path).name if body.screenshot_path else None
+        item = next((i for i in load_queue() if i["filename"] == filename), None) if filename else None
+        parsed = (item or {}).get("parsed") or None
+        participants = body.participants
+        if parsed and not participants:
+            me_stats = {k: getattr(body, k)
+                        for k in ("elims", "assists", "deaths", "damage", "healing", "mitigation")}
+            participants = [MatchParticipant(**p)
+                            for p in build_participants(parsed, body.team_slots, me_stats)]
+
         cur = conn.execute(
             """INSERT INTO matches
                (played_at, map, outcome, my_heroes, enemy_heroes, my_comp, enemy_comp,
@@ -311,8 +324,8 @@ def create_match(body: MatchCreate):
                 elims, deaths, assists, damage, healing, mitigation,
                 game_length_s, session_id, notes, tags, bans, teammates,
                 stack_size, screenshot_path, data_source,
-                practiced, practice_notes, is_historical)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                practiced, practice_notes, is_historical, raw_parse)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 played_at.isoformat(),
                 body.map, body.outcome,
@@ -327,27 +340,26 @@ def create_match(body: MatchCreate):
                 json.dumps(body.bans),
                 json.dumps(body.teammates),
                 body.stack_size,
-                body.screenshot_path, body.data_source,
+                body.screenshot_path, "screenshot" if parsed else body.data_source,
                 body.practiced, body.practice_notes, int(body.is_historical),
+                json.dumps(parsed) if parsed else "",
             ),
         )
         match_id = cur.lastrowid
         if body.screenshot_path:
-            filename = Path(body.screenshot_path).name
-            item = next((i for i in load_queue() if i["filename"] == filename), None)
             queue_remove(filename)
             _archive_screenshot(body.screenshot_path, "processed")
             if item and item.get("linked_path"):
                 _archive_screenshot(item["linked_path"], "processed")
-        if body.participants:
+        if participants:
             conn.executemany(
                 """INSERT INTO match_participants
-                   (match_id, player_name, team, heroes, stats, name_confidence)
-                   VALUES (?,?,?,?,?,?)""",
+                   (match_id, player_name, team, heroes, stats, name_confidence, slot, is_me)
+                   VALUES (?,?,?,?,?,?,?,?)""",
                 [(match_id, p.player_name, p.team,
                   json.dumps([h.dict() for h in p.heroes]),
-                  json.dumps(p.stats), p.name_confidence)
-                 for p in body.participants]
+                  json.dumps(p.stats), p.name_confidence, p.slot, int(p.is_me))
+                 for p in participants]
             )
     return {"id": match_id}
 
@@ -356,9 +368,12 @@ def create_match(body: MatchCreate):
 def get_match(match_id: int):
     with db.get_conn() as conn:
         row = conn.execute("SELECT * FROM matches WHERE id=?", (match_id,)).fetchone()
+        participants = db.rows_to_list(conn.execute(
+            "SELECT * FROM match_participants WHERE match_id=? ORDER BY team, slot", (match_id,)
+        ).fetchall())
     if not row:
         raise HTTPException(404, "Match not found")
-    return dict(row)
+    return {**dict(row), "participants": participants}
 
 
 @app.put("/api/matches/{match_id}")

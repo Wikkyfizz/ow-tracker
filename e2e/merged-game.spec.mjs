@@ -43,7 +43,13 @@ function seedMergedItem(name, overrides = {}) {
 const archived = (sub, file) => fs.existsSync(path.join(inbox, sub, path.basename(file)));
 
 test('merged game: confirm prefills everything and archives both screenshots', async ({ page, request }) => {
-  const { teamFile, summaryFile } = seedMergedItem('m1');
+  const statRow = (damage) => ({ elims: 1, assists: 2, deaths: 3, damage, healing: 0, mitigation: 0 });
+  const { teamFile, summaryFile } = seedMergedItem('m1', {
+    team_rows: {
+      my_team: [statRow(100), statRow(200), statRow(300), statRow(400), statRow(500)],
+      enemy_team: [statRow(600), statRow(700), statRow(800), statRow(900), statRow(1000)],
+    },
+  });
   await page.goto('/');
   await page.click('.nav-btn[data-page="queue"]');
 
@@ -69,9 +75,44 @@ test('merged game: confirm prefills everything and archives both screenshots', a
   expect(match.game_length_s).toBe(422);
   expect(JSON.parse(match.my_heroes).map(h => h.hero)).toEqual([myHero]);
 
+  // The save keeps the OCR parse and all 10 scoreboard rows, not just the player's.
+  expect(match.data_source).toBe('screenshot');
+  expect(JSON.parse(match.raw_parse).merged).toBe(true);
+  const detail = await (await request.get(`/api/matches/${match.id}`)).json();
+  expect(detail.participants).toHaveLength(10);
+  const me = detail.participants.filter(p => p.is_me);
+  expect(me).toHaveLength(1);
+  expect(me[0].slot).toBe(0);
+  expect(JSON.parse(me[0].heroes)[0].hero).toBe(myHero);
+  // The elims come from the confirmed form (25), not the raw row (1).
+  expect(JSON.parse(me[0].stats).elims).toBe(25);
+  const enemy = detail.participants.filter(p => p.team === 'enemy');
+  expect(JSON.parse(enemy[4].stats).damage).toBe(1000);
+
   expect((await (await request.get('/api/queue')).json()).queue).toEqual([]);
   expect(archived('processed', teamFile)).toBe(true);
   expect(archived('processed', summaryFile)).toBe(true);
+});
+
+test('an unknown hero stays on its scoreboard row when saved', async ({ page, request }) => {
+  const heroes = base.my_team_heroes.map((h, i) => (i === 1 ? { ...h, hero: 'Unknown DPS' } : h));
+  seedMergedItem('m6', { map: 'Rialto', my_team_heroes: heroes });
+  await page.goto('/');
+  await page.click('.nav-btn[data-page="queue"]');
+  await page.click('button:has-text("Confirm & Edit")');
+  const [post] = await Promise.all([
+    page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/matches')),
+    page.click('#modal-save-btn'),
+  ]);
+  const expected = heroes.map((h, i) => (i === 1 ? null : h.hero));
+  expect(post.postDataJSON().team_slots.my).toEqual(expected);
+  await expect(page.locator('#modal-msg')).toContainText('saved');
+
+  const match = (await (await request.get('/api/matches?map=Rialto')).json()).matches[0];
+  const detail = await (await request.get(`/api/matches/${match.id}`)).json();
+  const allies = detail.participants.filter(p => p.team === 'ally');
+  expect(JSON.parse(allies[1].heroes)).toEqual([]);
+  expect(JSON.parse(allies[2].heroes)[0].hero).toBe(heroes[2].hero);
 });
 
 test('merged game with a hero split: nothing is preselected', async ({ page }) => {

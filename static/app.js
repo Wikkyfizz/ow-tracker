@@ -18,6 +18,7 @@ let pendingSessionExpand = null;
 let modalIsHistorical = false;
 let mModalMyHeroes = [];
 let mModalMyTeamHeroes = [];   // full my-team comp (drives my_comp); no chip UI, carried through
+let mModalTeamSlots = null;    // confirmed hero per scoreboard row (null = unknown), for match_participants
 let mModalEnemyHeroes = [];
 let mModalBans = [];
 let practiceSelection = null;
@@ -611,6 +612,7 @@ async function openGameModal(prefill, isHistorical) {
   mModalMyTeamHeroes.length = 0;
   mModalEnemyHeroes.length  = 0;
   mModalBans.length         = 0;
+  mModalTeamSlots           = prefill?.team_slots || null;
 
   // Apply prefill
   if (prefill) {
@@ -732,6 +734,7 @@ async function saveModalGame() {
     my_heroes:      mModalMyHeroes,
     my_team_heroes: mModalMyTeamHeroes,
     enemy_heroes:   mModalEnemyHeroes,
+    team_slots:     mModalTeamSlots,
     bans:          mModalBans,
     rank_tier:     rankTier || '',
     rank_division: rankDiv  ? parseInt(rankDiv)     : null,
@@ -1461,6 +1464,9 @@ async function confirmQueueItem(idx) {
     p.my_team_heroes = state.my.map(s => toModalHero(s)).filter(Boolean);
     p.enemy_heroes   = state.enemy.map(s => toModalHero(s)).filter(Boolean);
     p.my_heroes      = [];
+    // The lists above drop unknown slots; this keeps each hero on its scoreboard row.
+    const slotNames  = slots => slots.map(s => toModalHero(s)?.hero || null);
+    p.team_slots     = { my: slotNames(state.my), enemy: slotNames(state.enemy) };
     // Merged game with one hero played: the player's row names that hero.
     const myRowHero = p.merged && p.my_row != null && (p.played_pcts || []).join() === '100'
       ? toModalHero(state.my[p.my_row] || {}) : null;

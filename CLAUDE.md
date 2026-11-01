@@ -41,7 +41,7 @@ After a game update, `venv/Scripts/python.exe sync_data.py --fetch` adds new her
 ### How it works
 
 1. Screenshot is loaded as BGR image via OpenCV
-2. `parser/ocr.py:row_slots()` computes the 10 portrait slot bounding boxes (5 my-team, 5 enemy-team) using resolution-independent fractions, refined by `_refine_row_center()`
+2. `parser/ocr.py:row_slots()` computes the 10 portrait slot bounding boxes (5 my-team, 5 enemy-team) from rows measured by `_find_row_centers()`
 3. `parser/icons.py:_match_slot()` extracts each portrait crop (70×56 px canonical size), filtered to heroes with the correct role, then scores against saved templates using normalized cross-correlation
 4. Best match above threshold is returned as the detected hero
 
@@ -128,7 +128,8 @@ All coordinates in `parser/ocr.py` as `*_FRAC` constants.
 
 Schema in `db.py`. Key tables:
 - `matches` — one row per game
-- `match_participants` — one row per player (10 per match; used for full team comp storage)
+- `match_participants` — one row per player (10 per match): `slot` is the scoreboard row, `is_me` marks the player's row when a merge identified it, `heroes` is that row's confirmed hero, and `stats` is JSON. The player's row uses the confirmed values. Written on save, from the queue item.
+- `matches.raw_parse` — the parse as OCR read it, before corrections, so accuracy can be measured against what was confirmed. `data_source` is `screenshot` if the game came from the queue, else `manual`. Rows marked `backfilled` were rebuilt by `backfill_participants.py` from today's detection.
 - `sessions` — play sessions
 - `heroes` — seeded from `heroes.csv` (Damage/Support/Tank roles, CSV names)
 - `maps` — seeded from `data/maps.csv`
@@ -146,14 +147,14 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ---
 
-## Active work as of 2026-10-31
+## Active work as of 2026-11-01
 
-- **Handoff and backlog:** the "Pick up here" box in the vault's `wiki/personal/ow-tracker.md`. Next build: hero picker.
-- Branch: `fix/data-integrity-and-perf`. See `docs/ui-pass-2.md` for UI Pass 2.
-- `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored, so real games have no backup yet.
+- **Handoff and backlog:** the "Pick up here" box in the vault's `wiki/personal/ow-tracker.md`. Next build: required rank at Confirm.
+- See `docs/ui-pass-2.md` for UI Pass 2.
+- `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored; the only backup is a manual copy from 2026-11-01 on the same disk.
 - Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
 - Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`.
-- e2e: `cd e2e; npm test` (7 tests, green 2026-10-31). `seed.mjs` generates its
+- e2e: `cd e2e; npm test` (8 tests, green 2026-11-01). `seed.mjs` generates its
   own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
   save/discard flows MOVE the queue item's file.
 - Template matching: about 85% correct on screenshots a template didn't come from (2026-10-31; labels came from detection itself, so treat this as an estimate).

@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS matches (
     practiced       TEXT DEFAULT NULL,
     practice_notes  TEXT DEFAULT '',
     is_historical   INTEGER DEFAULT 0,
+    raw_parse       TEXT DEFAULT '',
     FOREIGN KEY (map) REFERENCES maps(name),
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
@@ -135,6 +136,8 @@ CREATE TABLE IF NOT EXISTS match_participants (
     heroes          TEXT NOT NULL DEFAULT '[]',
     stats           TEXT NOT NULL DEFAULT '{}',
     name_confidence REAL DEFAULT 1.0,
+    slot            INTEGER DEFAULT NULL,
+    is_me           INTEGER DEFAULT 0,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
 
@@ -210,9 +213,18 @@ def _migrate_db(conn):
         ("practiced",      "TEXT DEFAULT NULL"),
         ("practice_notes", "TEXT DEFAULT ''"),
         ("is_historical",  "INTEGER DEFAULT 0"),
+        ("raw_parse",      "TEXT DEFAULT ''"),
     ]:
         if col not in match_cols:
             conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {defn}")
+
+    participant_cols = cols("match_participants")
+    for col, defn in [
+        ("slot",  "INTEGER DEFAULT NULL"),
+        ("is_me", "INTEGER DEFAULT 0"),
+    ]:
+        if col not in participant_cols:
+            conn.execute(f"ALTER TABLE match_participants ADD COLUMN {col} {defn}")
 
 
 def sync_reference_data(conn):

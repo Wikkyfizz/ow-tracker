@@ -28,6 +28,8 @@ class MatchParticipant(BaseModel):
     heroes: list[HeroEntry] = []
     stats: dict = {}
     name_confidence: float = 1.0
+    slot: Optional[int] = None
+    is_me: bool = False
 
 
 class MatchCreate(BaseModel):
@@ -61,6 +63,8 @@ class MatchCreate(BaseModel):
     practice_notes: str = ""
     is_historical: bool = False
     participants: list[MatchParticipant] = []
+    # Confirmed hero per scoreboard row, {"my": [...], "enemy": [...]}; null = unknown.
+    team_slots: Optional[dict] = None
 
 
 class MatchUpdate(MatchCreate):

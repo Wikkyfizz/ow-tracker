@@ -217,3 +217,40 @@ def merge_summary_team(summary: dict, team: dict) -> dict:
         warnings.append(f"Hero split on Summary: {played} — select the heroes you played")
     merged["warnings"] = warnings
     return merged
+
+
+# ── One row per player, for match_participants ────────────────────────────────
+
+_ROW_STATS = ("elims", "assists", "deaths", "damage", "healing", "mitigation")
+
+
+def build_participants(parsed: dict, team_slots: dict = None, me_stats: dict = None) -> list[dict]:
+    """The scoreboard as 10 rows. Slots keep their row number, so an unidentified hero
+    leaves that row's hero list empty instead of shifting the rows below it.
+    team_slots holds the heroes confirmed in the Queue; without it, the detected ones.
+    me_stats are the confirmed values for the player's own row, which beat raw OCR."""
+    rows = parsed.get("team_rows") or {}
+    slots = team_slots or {}
+    sides = (("ally", "my", rows.get("my_team") or [], parsed.get("my_team_heroes") or []),
+             ("enemy", "enemy", rows.get("enemy_team") or [], parsed.get("enemy_heroes") or []))
+    participants = []
+    for team, slot_key, team_rows, detected in sides:
+        names = slots.get(slot_key)
+        if names is None:
+            names = [h.get("hero") if isinstance(h, dict) else h for h in detected]
+        for i in range(max(len(team_rows), len(names))):
+            row = team_rows[i] if i < len(team_rows) else {}
+            hero = names[i] if i < len(names) else None
+            is_me = team == "ally" and parsed.get("my_row") == i
+            stats = {k: row.get(k) for k in _ROW_STATS}
+            if is_me and me_stats:
+                stats.update({k: v for k, v in me_stats.items() if v is not None})
+            participants.append({
+                "player_name": row.get("name") or "",
+                "team": team,
+                "heroes": [{"hero": hero, "pct": 100}] if hero and not hero.startswith("Unknown") else [],
+                "stats": stats,
+                "slot": i,
+                "is_me": is_me,
+            })
+    return participants
