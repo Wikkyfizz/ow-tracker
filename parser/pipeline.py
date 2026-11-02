@@ -113,6 +113,9 @@ def _parse_team_tab(path: str, img: Image.Image, username: str, warnings: list) 
 
     raw_my    = icon_result.get("my_heroes",    [])
     raw_enemy = icon_result.get("enemy_heroes", [])
+    for side, team in (("Your", raw_my), ("Enemy", raw_enemy)):
+        if 0 < len(team) < 5:
+            warnings.append(f"{side} team shows {len(team)} players — someone left the game")
     # The scoreboard gives us the FULL team comp (all 5 slots). The 5 my-team heroes are the
     # team comp (→ my_team_heroes, used only to derive my_comp); the hero(es) the
     # user actually played are picked explicitly in the review step. This avoids

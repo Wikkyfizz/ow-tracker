@@ -35,20 +35,24 @@ _INK_LEVEL = 165
 _CROP_TRIM_Y, _CROP_TRIM_X = 6, 10  # slack for the slide when matching
 
 
-def _row_centers(img_bgr) -> list[int]:
+def _team_centers(img_bgr) -> tuple[list[int], list[int]]:
     h, w = img_bgr.shape[:2]
     measured = _find_row_centers(img_bgr, w, h)
-    return measured or [int(y * h / 1080) for y in MY_TEAM_ROW_Y + ENEMY_TEAM_ROW_Y]
+    return measured or ([int(y * h / 1080) for y in MY_TEAM_ROW_Y],
+                        [int(y * h / 1080) for y in ENEMY_TEAM_ROW_Y])
 
 
-def name_rows(path: str, below: int = _ROW_BELOW) -> list[np.ndarray]:
-    """The 10 name regions in row order (5 allies, 5 enemies), normalised to 1920×1080."""
+def name_rows(path: str, below: int = _ROW_BELOW, allies_only: bool = False) -> list[np.ndarray]:
+    """The name regions in row order (allies, then enemies), normalised to 1920×1080.
+    A team that lost a player has fewer than 5 rows."""
     img = cv2.imread(path)
     if img is None:
         return []
     if img.shape[:2] != (1080, 1920):
         img = cv2.resize(img, (1920, 1080), interpolation=cv2.INTER_AREA)
-    return [img[cy - _ROW_ABOVE:cy + below, _X_RANGE[0]:_X_RANGE[1]] for cy in _row_centers(img)]
+    my, enemy = _team_centers(img)
+    centers = my if allies_only else my + enemy
+    return [img[cy - _ROW_ABOVE:cy + below, _X_RANGE[0]:_X_RANGE[1]] for cy in centers]
 
 
 def _ink(crop_bgr: np.ndarray) -> np.ndarray:
@@ -107,12 +111,12 @@ def read_name(crop_bgr: np.ndarray) -> str:
 
 
 def find_own_row(path: str, username: str) -> int | None:
-    """Which of the 5 ally rows reads as the user's own name."""
+    """Which ally row reads as the user's own name."""
     if not username:
         return None
     wanted = username.upper()
     best_row, best_ratio = None, 0.0
-    for row, crop in enumerate(name_rows(path)[:5]):
+    for row, crop in enumerate(name_rows(path, allies_only=True)):
         ratio = difflib.SequenceMatcher(None, wanted, read_name(crop)).ratio()
         if ratio > best_ratio:
             best_row, best_ratio = row, ratio
@@ -121,7 +125,7 @@ def find_own_row(path: str, username: str) -> int | None:
 
 def identify_allies(path: str, players: list[str], username: str = "") -> dict:
     """For each ally row: the known player it matches, or a text suggestion if none."""
-    crops = name_rows(path)[:5]
+    crops = name_rows(path, allies_only=True)
     templates = load_templates(players)
     rows = []
     for row, crop in enumerate(crops):

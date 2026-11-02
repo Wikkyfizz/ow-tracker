@@ -14,8 +14,13 @@ PORTRAITS_DIR = Path(__file__).parent / "portraits"        # in-game crop templa
 # Based on the 1920×1080 portrait region (70×56 px).
 CANONICAL_W, CANONICAL_H = 70, 56
 
-# Scoreboard slot order is always: tank, dps, dps, support, support
+# A full team's slot order is always: tank, dps, dps, support, support.
+# After a leaver the row is gone, so a short team reads each row's role icon instead.
 SLOT_ROLES = ["tank", "dps", "dps", "support", "support"]
+
+# The white role icon at the left edge of each row (1920×1080 reference).
+ROLE_ICON_X_FRAC = (538 / 1920, 562 / 1920)
+ROLE_ICON_HALF_H_FRAC = 13 / 1080
 
 # CSV hero names that differ from the code names used as template slugs.
 # Template filenames use code names; CSV uses display names with special chars.
@@ -153,6 +158,31 @@ def _match_slot(img_bgr, slot: tuple, portraits: dict, role: str | None = None) 
         return "", 0.0
 
 
+def row_role(img_bgr, cy: int) -> str:
+    """Read a row's role icon: three bullets (dps), a shield wide at the top and pointed
+    at the bottom (tank), or a cross, narrow at both ends (support). "" if unreadable."""
+    h, w = img_bgr.shape[:2]
+    x1, x2 = int(ROLE_ICON_X_FRAC[0] * w), int(ROLE_ICON_X_FRAC[1] * w)
+    half = int(ROLE_ICON_HALF_H_FRAC * h)
+    icon = img_bgr[max(cy - half, 0):cy + half, x1:x2].min(axis=2) > 200  # white on any row colour
+    lines = np.flatnonzero(icon.any(axis=1))
+    if len(lines) < 8:
+        return ""
+    icon = icon[lines[0]:lines[-1] + 1]
+    middle = icon[len(icon) // 2].astype(np.int8)
+    if np.count_nonzero(np.diff(np.concatenate(([0], middle, [0]))) == 1) >= 3:
+        return "dps"
+    q = max(len(icon) // 4, 1)
+    top, bottom = icon[:q].sum(axis=1).mean(), icon[-q:].sum(axis=1).mean()
+    return "tank" if top > 1.5 * bottom else "support"
+
+
+def _team_roles(img_bgr, slots: list) -> list[str]:
+    if len(slots) == len(SLOT_ROLES):
+        return SLOT_ROLES
+    return [row_role(img_bgr, (t + b) // 2) for _, t, _, b in slots]
+
+
 def extract_heroes(img_path: str) -> dict:
     """
     Identify heroes from a TEAMS tab screenshot using in-game portrait templates.
@@ -179,15 +209,13 @@ def extract_heroes(img_path: str) -> dict:
         my_slots, enemy_slots = row_slots(W, H, img_bgr)
         my_heroes, enemy_heroes, scores = [], [], []
 
-        for i, slot in enumerate(my_slots):
-            role = SLOT_ROLES[i]
+        for slot, role in zip(my_slots, _team_roles(img_bgr, my_slots)):
             hero, score = _match_slot(img_bgr, slot, portraits, role)
             display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
             my_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})
             scores.append(score)
 
-        for i, slot in enumerate(enemy_slots):
-            role = SLOT_ROLES[i]
+        for slot, role in zip(enemy_slots, _team_roles(img_bgr, enemy_slots)):
             hero, score = _match_slot(img_bgr, slot, portraits, role)
             display = hero if (hero and score >= CONFIDENCE_THRESHOLD) else _UNKNOWN_LABEL.get(role, "Unknown")
             enemy_heroes.append({"hero": display, "confidence": round(score, 2), "role": role})

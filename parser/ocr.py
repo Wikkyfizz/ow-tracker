@@ -51,12 +51,17 @@ def _px(frac, dim):
     return int(frac * dim)
 
 
+MIN_TEAM_ROWS = 3  # a team is 5 rows, or fewer when someone left the game
+
+
 def _find_row_centers(img_bgr, img_w, img_h):
     """
-    Locate the y-center of all 10 player rows from the bright digits in the
+    Locate the y-center of every player row from the bright digits in the
     DMG→MIT columns. Rows vary in height (optional player titles shift them), so
     positions are measured rather than assumed. The scan starts below the white
-    column-header bar. Returns None unless exactly 10 rows are found.
+    column-header bar. A leaver's row disappears from the scoreboard, so a team can
+    have fewer than 5; the widest gap, at the "VS" divider, separates the teams.
+    Returns (my_team_ys, enemy_team_ys), or None if the rows don't look like two teams.
     """
     x1 = int(STAT_COLS_FRAC["damage"][0]     * img_w)
     x2 = int(STAT_COLS_FRAC["mitigation"][1] * img_w)
@@ -75,14 +80,25 @@ def _find_row_centers(img_bgr, img_w, img_h):
     # Keep digit-height bands, which drops thin lines such as the "VS" divider.
     min_h, max_h = _px(8 / _REF_H, img_h), _px(30 / _REF_H, img_h)
     centers = [y_start + (top + bot) // 2 for top, bot in bands if min_h <= bot - top <= max_h]
-    return centers if len(centers) == 10 else None
+    if len(centers) < 2 * MIN_TEAM_ROWS:
+        return None
+    gaps = [b - a for a, b in zip(centers, centers[1:])]
+    split = gaps.index(max(gaps)) + 1
+    my, enemy = centers[:split], centers[split:]
+    within = gaps[:split - 1] + gaps[split:]
+    if not (MIN_TEAM_ROWS <= len(my) <= 5 and MIN_TEAM_ROWS <= len(enemy) <= 5):
+        return None
+    if max(gaps) < 1.5 * max(within):  # no clear divider: not a scoreboard we can read
+        return None
+    return my, enemy
 
 
 def row_slots(img_w, img_h, img_bgr=None):
     """
     Return (my_team_rows, enemy_team_rows) as lists of (x1,y1,x2,y2) pixel tuples.
-    When img_bgr is supplied, each row's y-center is measured from the image;
-    otherwise (or if measuring fails) the typical row positions are used.
+    When img_bgr is supplied, each row's y-center is measured from the image, and a
+    team that lost a player has fewer rows; otherwise (or if measuring fails) the
+    typical 5 + 5 row positions are used.
     """
     px1 = _px(PORTRAIT_X_FRAC[0], img_w)
     px2 = _px(PORTRAIT_X_FRAC[1], img_w)
@@ -92,9 +108,9 @@ def row_slots(img_w, img_h, img_bgr=None):
     enemy_ys = [_px(f, img_h) for f in ENEMY_TEAM_ROW_Y_FRAC]
 
     if img_bgr is not None:
-        centers = _find_row_centers(img_bgr, img_w, img_h)
-        if centers:
-            my_ys, enemy_ys = centers[:5], centers[5:]
+        measured = _find_row_centers(img_bgr, img_w, img_h)
+        if measured:
+            my_ys, enemy_ys = measured
 
     my_rows    = [(px1, cy - half_h, px2, cy + half_h) for cy in my_ys]
     enemy_rows = [(px1, cy - half_h, px2, cy + half_h) for cy in enemy_ys]
@@ -432,7 +448,7 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
 
 def extract_all_rows(img: Image.Image) -> dict:
     """
-    Extract stats for all 10 players from a TEAM tab screenshot.
+    Extract stats for every player row on a TEAM tab screenshot (10, or fewer after a leaver).
     Returns {"my_team": [...], "enemy_team": [...]}.
     Each row: {elims, assists, deaths, damage, healing, mitigation}.
 
@@ -454,7 +470,13 @@ def extract_all_rows(img: Image.Image) -> dict:
             rows.append(row)
         return rows
 
-    return {"my_team": _read_rows(MY_TEAM_ROW_Y), "enemy_team": _read_rows(ENEMY_TEAM_ROW_Y)}
+    # Full teams keep the fixed rows: measured ones shifted the binning and changed reads on
+    # 29 of 43 real scoreboards, some for the worse. A team short a player has no fixed rows.
+    img_bgr = np.array(img.convert("RGB"))[:, :, ::-1]
+    measured = _find_row_centers(img_bgr, img.width, img.height) or ([], [])
+    my_ys    = measured[0] if 0 < len(measured[0]) < 5 else MY_TEAM_ROW_Y
+    enemy_ys = measured[1] if 0 < len(measured[1]) < 5 else ENEMY_TEAM_ROW_Y
+    return {"my_team": _read_rows(my_ys), "enemy_team": _read_rows(enemy_ys)}
 
 
 def extract_player_rows(img: Image.Image, team: str = "my") -> list[dict]:

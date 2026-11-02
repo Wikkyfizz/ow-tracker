@@ -30,6 +30,15 @@ def test_the_player_row_ignores_the_header_bar():
     assert abs((my[0][1] + my[0][3]) // 2 - 274) <= 1
 
 
+def test_a_leaver_leaves_that_team_a_row_short():
+    # A leaver's row is removed, not blanked, and the rows below it move up.
+    short = CENTERS[:5] + [708, 775, 846, 917]
+    my, enemy = row_slots(W, H, screenshot(short))
+    assert len(my) == 5 and len(enemy) == 4
+    measured = [(top + bot) // 2 for _, top, _, bot in my + enemy]
+    assert all(abs(a - b) <= 1 for a, b in zip(measured, short)), measured
+
+
 def test_falls_back_when_rows_cannot_be_found():
     my, enemy = row_slots(W, H, np.zeros((H, W, 3), np.uint8))
     assert (my[0][1] + my[0][3]) // 2 == 270 and (enemy[0][1] + enemy[0][3]) // 2 == 688

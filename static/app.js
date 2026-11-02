@@ -38,6 +38,12 @@ const queueHeroState = {};
 let _pickerCtx = null; // { filename, team, slotIdx }
 const SLOT_ROLES_JS = ['tank', 'dps', 'dps', 'support', 'support'];
 const SLOT_API_ROLE  = { tank: 'Tank', dps: 'Damage', support: 'Support' };
+// A slot's role comes from the parse: after a leaver the rows no longer follow the
+// usual order. Position is the fallback for slots parsed without one.
+const slotRoleOf = (filename, team, i) => {
+  const slots = queueHeroState[filename]?.[team] || [];
+  return slots[i]?.role ?? (slots.length === 5 ? SLOT_ROLES_JS[i] : '');
+};
 
 // ── API ───────────────────────────────────────────────────────────────────────
 const api = {
@@ -1796,14 +1802,14 @@ function renderTeamCompPanel(item) {
       const isUnknown   = !s.hero || s.hero.startsWith('Unknown');
       const isUncertain = isUnknown || s.confidence < 0.75;
       const cls = s.corrected ? 'corrected' : (isUncertain ? 'uncertain' : '');
-      const label = isUnknown ? '?' : (s.hero.length > 10 ? s.hero.slice(0, 9) + '…' : s.hero);
+      const label = isUnknown ? '?' : s.hero;  // CSS ellipsis trims to the slot's width
       const fn_safe = fn.replace(/'/g, "\\'");
       return `<div class="hero-slot ${cls}" data-slot="${fn}-${team}-${i}"
                    onclick="openHeroPicker('${fn_safe}','${team}',${i})">
         <img class="hero-slot-img"
              src="/api/queue/${encodeURIComponent(fn)}/portrait/${team}/${i}"
              loading="lazy" onerror="this.style.opacity='.15'">
-        <div class="hero-slot-name">${label}</div>
+        <div class="hero-slot-name" title="${label}">${label}</div>
       </div>`;
     }).join('');
   };
@@ -1825,8 +1831,7 @@ function renderTeamCompPanel(item) {
 
 function openHeroPicker(filename, team, slotIdx) {
   _pickerCtx = { filename, team, slotIdx };
-  const slotRole = SLOT_ROLES_JS[slotIdx];
-  const apiRole  = SLOT_API_ROLE[slotRole] || 'All';
+  const apiRole  = SLOT_API_ROLE[slotRoleOf(filename, team, slotIdx)] || 'All';
   document.getElementById('hero-picker-role-label').textContent = apiRole + ' slot ' + (slotIdx + 1);
   const filterEl = document.getElementById('hero-picker-filter');
   filterEl.value = '';
@@ -1838,8 +1843,7 @@ function openHeroPicker(filename, team, slotIdx) {
 function _renderPickerGrid(filter) {
   if (!_pickerCtx) return;
   const { filename, team, slotIdx } = _pickerCtx;
-  const slotRole  = SLOT_ROLES_JS[slotIdx];
-  const apiRole   = SLOT_API_ROLE[slotRole];
+  const apiRole   = SLOT_API_ROLE[slotRoleOf(filename, team, slotIdx)];
   const state     = queueHeroState[filename];
   const current   = state ? (state[team][slotIdx]?.hero || '') : '';
   const pool      = apiRole ? heroes.filter(h => h.role === apiRole) : heroes;
