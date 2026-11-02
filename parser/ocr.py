@@ -244,6 +244,7 @@ def extract_summary_stats(img: Image.Image) -> dict:
     stats = {k: _ocr_summary_int(img, r) for k, r in SUMMARY_STAT_REGIONS.items()}
     pcts = [_ocr_summary_int(img, r) for r in SUMMARY_PCT_REGIONS]
     stats["played_pcts"] = [p for p in pcts if p]
+    stats["played_cards"] = [i for i, p in enumerate(pcts) if p]
     return stats
 
 

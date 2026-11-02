@@ -15,6 +15,7 @@ let pendingSessionExpand = null;
 
 // Modal state
 let modalIsHistorical = false;
+let sessionChoiceTouched = false;
 let mModalMyHeroes = [];
 let mModalMyTeamHeroes = [];   // full my-team comp (drives my_comp); no chip UI, carried through
 let mModalTeamSlots = null;    // confirmed hero per scoreboard row (null = unknown), for match_participants
@@ -714,6 +715,7 @@ async function openGameModal(prefill, isHistorical) {
 
   buildModalHeroLists();
   loadParty();
+  await loadSessionChoices(prefill?._edit?.session_id);
 
   // Title
   document.getElementById('modal-title-text').textContent =
@@ -735,6 +737,64 @@ async function openGameModal(prefill, isHistorical) {
 
 function closeGameModal() {
   document.getElementById('game-modal').style.display = 'none';
+}
+
+// ── Modal: which session the game belongs to ─────────────────────────────────
+function sessionChoiceLabel(s) {
+  const when = new Date(s.started_at || s.date).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const games = `${s.match_count} game${s.match_count === 1 ? '' : 's'}`;
+  const title = s.name || s.goal;
+  return [s.ended_at ? when : `Running, ${when}`, games, `${s.wins || 0}-${s.losses || 0}`, title]
+    .filter(Boolean).join(' · ');
+}
+
+async function loadSessionChoices(savedSessionId) {
+  const sel = document.getElementById('m-session');
+  const sessions = await api.get('/api/sessions');
+  sel.innerHTML = '';
+  sel.add(new Option('Choose…', ''));
+  sel.add(new Option('+ New session', 'new'));
+  sessions.filter(s => s.match_count || !s.ended_at)
+    .forEach(s => sel.add(new Option(sessionChoiceLabel(s), s.id)));
+  sessionChoiceTouched = false;
+  if (savedSessionId) {
+    sel.value = savedSessionId;
+    sessionChoiceTouched = true; // a saved game stays put unless the player moves it
+  } else {
+    await suggestSession();
+  }
+}
+
+// Preselect the session this game's time falls in. No match leaves the field on
+// "Choose…", which is the prompt: Save won't go through until it's answered.
+async function suggestSession() {
+  if (sessionChoiceTouched) return;
+  const sel = document.getElementById('m-session');
+  const played = document.getElementById('m-played-at').value;
+  const query = played ? `?played_at=${encodeURIComponent(played.length === 16 ? played + ':00' : played)}` : '';
+  const { session_id } = await api.get(`/api/sessions/for-time${query}`);
+  sel.value = session_id ?? '';
+  document.getElementById('mf-session').classList.toggle('field-ocr-low', !sel.value);
+}
+
+document.getElementById('m-session').addEventListener('change', (e) => {
+  sessionChoiceTouched = true;
+  document.getElementById('mf-session').classList.toggle('field-ocr-low', !e.target.value);
+});
+document.getElementById('m-played-at').addEventListener('change', suggestSession);
+
+async function refreshActiveSession() {
+  const { session } = await api.get('/api/sessions/active');
+  activeSession = session;
+  updateSessionNavBtn();
+  if (!session) return;
+  startSessionTimer();
+  const data = await api.get(`/api/sessions/${session.id}`);
+  sessionMatches = data.matches || [];
+  updateSessionStats();
+  renderSessionGames();
 }
 
 // ── Modal: who was in the party ──────────────────────────────────────────────
@@ -901,6 +961,14 @@ async function saveModalGame() {
     return;
   }
 
+  const sessionChoice = document.getElementById('m-session').value;
+  if (!sessionChoice) {
+    msgEl.textContent = 'Choose a session: start a new one or add this game to an old one.';
+    msgEl.style.color = 'var(--loss)';
+    document.getElementById('m-session').focus();
+    return;
+  }
+
   // Warn once; a second click means they've seen it and want to save anyway.
   const warnings = heroWarnings();
   if (warnings.length && !saveWarningShown) {
@@ -945,7 +1013,8 @@ async function saveModalGame() {
   // local timestamps (OCR reads the game's local clock; the server stamps
   // datetime.now()); converting to UTC here would shift games by the tz offset.
   if (datetimeVal) payload.played_at = datetimeVal.length === 16 ? datetimeVal + ':00' : datetimeVal;
-  if (activeSession && !modalIsHistorical) payload.session_id = activeSession.id;
+  if (sessionChoice === 'new') payload.new_session = true;
+  else payload.session_id = Number(sessionChoice);
 
   // Before the save below, which archives the screenshot these crops come from.
   const newlyMarked = mModalPartyRows.filter(r => r.selected);
@@ -964,6 +1033,7 @@ async function saveModalGame() {
     msgEl.style.color = 'var(--win)';
     Object.keys(analyticsLoaded).forEach(k => delete analyticsLoaded[k]);
     loadHistory();
+    await refreshActiveSession();
     setTimeout(closeGameModal, 600);
     return;
   }
@@ -992,12 +1062,7 @@ async function saveModalGame() {
 
     Object.keys(analyticsLoaded).forEach(k => delete analyticsLoaded[k]);
 
-    if (activeSession && !modalIsHistorical) {
-      const data   = await api.get(`/api/sessions/${activeSession.id}`);
-      sessionMatches = data.matches || [];
-      updateSessionStats();
-      renderSessionGames();
-    }
+    await refreshActiveSession();
 
     setTimeout(closeGameModal, 600);
   } else {
@@ -1664,22 +1729,25 @@ async function confirmQueueItem(idx) {
   const state = queueHeroState[item.filename];
   const toModalHero = h => {
     const name = typeof h === 'string' ? h : h.hero;
-    return (name && !name.startsWith('Unknown')) ? { hero: name, pct: 100 } : null;
+    return (name && !name.startsWith('Unknown')) ? { hero: name, pct: h.pct || 100 } : null;
   };
   if (state) {
     // TEAM tab: the corrected 5-hero panel is the team comp, not "heroes I played".
-    // Route it to my_team_heroes (drives my_comp); leave my_heroes empty so the
-    // user explicitly picks the hero(es) they played in the modal.
+    // Route it to my_team_heroes (drives my_comp). What the player played comes from
+    // Summary's hero cards below; without a Summary they pick it in the modal.
     p.my_team_heroes = state.my.map(s => toModalHero(s)).filter(Boolean);
     p.enemy_heroes   = state.enemy.map(s => toModalHero(s)).filter(Boolean);
-    p.my_heroes      = [];
+    const cards      = p.played_heroes || [];
+    p.my_heroes      = cards.map(toModalHero).filter(Boolean);
     // The lists above drop unknown slots; this keeps each hero on its scoreboard row.
     const slotNames  = slots => slots.map(s => toModalHero(s)?.hero || null);
     p.team_slots     = { my: slotNames(state.my), enemy: slotNames(state.enemy) };
-    // Merged game with one hero played: the player's row names that hero.
-    const myRowHero = p.merged && p.my_row != null && (p.played_pcts || []).join() === '100'
-      ? toModalHero(state.my[p.my_row] || {}) : null;
-    if (myRowHero) p.my_heroes = [myRowHero];
+    // Top card not recognised: the player's scoreboard row shows their most-played hero.
+    const topUnread  = cards.length ? !cards[0].hero : (p.played_pcts || []).join() === '100';
+    const myRowHero  = p.merged && p.my_row != null && topUnread ? toModalHero(state.my[p.my_row] || {}) : null;
+    if (myRowHero && !p.my_heroes.some(h => h.hero === myRowHero.hero)) {
+      p.my_heroes.unshift({ hero: myRowHero.hero, pct: cards[0]?.pct ?? 100 });
+    }
   } else {
     // SUMMARY / PERSONAL: my_heroes is already "heroes I played" (or empty).
     p.my_heroes    = (p.my_heroes    || []).map(toModalHero).filter(Boolean);

@@ -34,8 +34,10 @@ def parse_screenshot(path: str, username: str = "") -> dict:
 
 def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
     from parser.ocr import extract_summary
+    from parser.hero_names import read_cards
     data = extract_summary(img, known_maps())
     warnings.extend(data.pop("warnings", []))
+    played_heroes = read_cards(img, data.get("played_cards", []), data.get("played_pcts", []))
     return {
         "tab_type":      "SUMMARY",
         "map":           data.get("map", ""),
@@ -43,9 +45,10 @@ def _parse_summary_tab(img: Image.Image, warnings: list) -> dict:
         "game_length_s": data.get("game_length_s"),
         "played_at":     data.get("played_at"),
         "game_mode":     data.get("game_mode", ""),
-        "my_heroes":     [],
+        "my_heroes":     [{"hero": c["hero"], "pct": c["pct"]} for c in played_heroes if c["hero"]],
         "my_team_heroes": [],
         "enemy_heroes":  [],
+        "played_heroes": played_heroes,
         "elims":         data.get("elims"),
         "deaths":        data.get("deaths"),
         "assists":       data.get("assists"),
@@ -192,7 +195,7 @@ def merge_summary_team(summary: dict, team: dict) -> dict:
     if row_idx is None:
         row_idx = team.get("my_row")
     merged = dict(team)
-    for k in ("map", "outcome", "game_length_s", "played_at", "game_mode", "played_pcts"):
+    for k in ("map", "outcome", "game_length_s", "played_at", "game_mode", "played_pcts", "played_heroes"):
         merged[k] = summary.get(k)
     merged["merged"] = True
     merged["my_row"] = row_idx
@@ -216,7 +219,9 @@ def merge_summary_team(summary: dict, team: dict) -> dict:
         merged[k] = summary[k] if summary.get(k) is not None else row.get(k)
 
     pcts = merged.get("played_pcts") or []
-    if pcts != [100]:
+    cards = merged.get("played_heroes") or []
+    all_read = bool(cards) and all(c.get("hero") for c in cards)
+    if pcts != [100] and not all_read:
         played = " + ".join(f"{p}%" for p in pcts) or "unknown split"
         warnings.append(f"Hero split on Summary: {played} — select the heroes you played")
     merged["warnings"] = warnings

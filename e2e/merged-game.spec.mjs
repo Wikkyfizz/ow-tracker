@@ -41,6 +41,7 @@ function seedMergedItem(name, overrides = {}) {
 }
 
 const archived = (sub, file) => fs.existsSync(path.join(inbox, sub, path.basename(file)));
+const discardItem = (page, filename) => page.request.delete(`/api/queue/${filename}`);
 
 test('merged game: confirm prefills everything and archives both screenshots', async ({ page, request }) => {
   const statRow = (damage) => ({ elims: 1, assists: 2, deaths: 3, damage, healing: 0, mitigation: 0 });
@@ -67,6 +68,7 @@ test('merged game: confirm prefills everything and archives both screenshots', a
   await expect(page.locator('#m-my-heroes .hero-chip.selected')).toHaveCount(1);
   await expect(page.locator(`#m-my-heroes .hero-chip.selected[data-hero="${myHero}"]`)).toHaveCount(1);
 
+  await page.selectOption('#m-session', 'new');
   await page.click('#modal-save-btn');
   await expect(page.locator('#modal-msg')).toContainText('saved');
 
@@ -100,6 +102,7 @@ test('an unknown hero stays on its scoreboard row when saved', async ({ page, re
   await page.goto('/');
   await page.click('.nav-btn[data-page="queue"]');
   await page.click('button:has-text("Confirm & Edit")');
+  await page.selectOption('#m-session', 'new');
   const [post] = await Promise.all([
     page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/matches')),
     page.click('#modal-save-btn'),
@@ -113,6 +116,36 @@ test('an unknown hero stays on its scoreboard row when saved', async ({ page, re
   const allies = detail.participants.filter(p => p.team === 'ally');
   expect(JSON.parse(allies[1].heroes)).toEqual([]);
   expect(JSON.parse(allies[2].heroes)[0].hero).toBe(heroes[2].hero);
+});
+
+test('heroes read off the Summary cards are selected with their %', async ({ page }) => {
+  seedMergedItem('m7', {
+    played_pcts: [75, 25],
+    played_heroes: [{ card: 0, pct: 75, hero: 'Reinhardt' }, { card: 1, pct: 25, hero: 'Mauga' }],
+  });
+  await page.goto('/');
+  await page.click('.nav-btn[data-page="queue"]');
+  await page.click('button:has-text("Confirm & Edit")');
+  await expect(page.locator('#m-my-heroes .hero-chip.selected')).toHaveCount(2);
+  await expect(page.locator('#m-my-heroes .hero-chip[data-hero="Reinhardt"] .pct-input')).toHaveValue('75');
+  await expect(page.locator('#m-my-heroes .hero-chip[data-hero="Mauga"] .pct-input')).toHaveValue('25');
+  await page.click('#modal-cancel-btn');
+  await discardItem(page, 'm7-team.png');
+});
+
+test('an unread card still gets its % when the hero is picked', async ({ page }) => {
+  seedMergedItem('m8', {
+    played_pcts: [75, 25],
+    played_heroes: [{ card: 0, pct: 75, hero: 'Reinhardt' }, { card: 1, pct: 25, hero: null }],
+  });
+  await page.goto('/');
+  await page.click('.nav-btn[data-page="queue"]');
+  await page.click('button:has-text("Confirm & Edit")');
+  await expect(page.locator('#m-my-heroes .hero-chip.selected')).toHaveCount(1);
+  await page.click('#m-my-heroes .hero-chip[data-hero="Mauga"]');
+  await expect(page.locator('#m-my-heroes .hero-chip[data-hero="Mauga"] .pct-input')).toHaveValue('25');
+  await page.click('#modal-cancel-btn');
+  await discardItem(page, 'm8-team.png');
 });
 
 test('merged game with a hero split: nothing is preselected', async ({ page }) => {

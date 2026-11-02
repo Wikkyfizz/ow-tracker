@@ -36,6 +36,7 @@ export default defineConfig({
       OW_TRACKER_QUEUE: path.join(tmp, 'queue.json'),
       OW_TRACKER_SETTINGS: path.join(tmp, 'settings.json'),
       OW_TRACKER_NAMES: path.join(tmp, 'player_names'),
+      OW_TRACKER_HERO_NAMES: path.join(tmp, 'hero_names'),
     },
   },
 });

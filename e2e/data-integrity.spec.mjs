@@ -69,6 +69,7 @@ test('TEAM parse: comp panel holds full team, my_heroes stays clean through save
   await page.selectOption('#m-map', 'Ilios');
   await page.selectOption('#m-outcome', 'Win');
   await page.click(`#m-my-heroes .hero-chip[data-hero="${PLAYED}"]`);
+  await page.selectOption('#m-session', 'new');
   await page.click('#modal-save-btn');
   await expect(page.locator('#modal-msg')).toContainText('saved');
 
@@ -97,6 +98,10 @@ test('TEAM parse: comp panel holds full team, my_heroes stays clean through save
 test('Sessions page: history card renders labeled full-width stats', async ({ page, request }) => {
   const jsErrors = [];
   attachErrorGuards(page, jsErrors);
+
+  // The test above started a session with its game; this one needs its own.
+  const { session: running } = await (await request.get('/api/sessions/active')).json();
+  if (running) await request.post(`/api/sessions/${running.id}/end`);
 
   // Create a completed session with one win via the API
   const sess = await (await request.post('/api/sessions', { data: { goal: 'e2e layout check' } })).json();

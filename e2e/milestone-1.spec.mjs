@@ -39,6 +39,7 @@ async function openConfirm(page) {
   await page.click('.nav-btn[data-page="queue"]');
   await page.click('button:has-text("Confirm & Edit")');
   await expect(page.locator('.party-row')).toHaveCount(4); // the 5 allies minus my own row
+  await page.selectOption('#m-session', 'new');
 }
 
 const newestMatch = async (request) =>
@@ -103,6 +104,7 @@ test('a game with no scoreboard chooses party members from the list', async ({ p
   await page.click('#m-my-heroes .hero-chip[data-hero="Winston"]');
   await page.click('#m-party .hero-chip:has-text("TestFriend")');
   await expect(page.locator('#m-stack-label')).toHaveText('(stack of 2)');
+  await page.selectOption('#m-session', 'new');
   await page.click('#modal-save-btn');
   await expect(page.locator('#modal-msg')).toContainText('saved');
   const match = await newestMatch(request);
@@ -178,31 +180,17 @@ test('a game with no hero, or picks that contradict Summary, warns before saving
 
 test('a failed save keeps the queue item and its screenshot', async ({ request }) => {
   const file = seedItem('f1');
+  const sessionsBefore = (await (await request.get('/api/sessions')).json()).length;
   const res = await request.post('/api/matches', { data: {
-    map: 'Ilios', outcome: 'Win', screenshot_path: file,
+    map: 'Ilios', outcome: 'Win', screenshot_path: file, new_session: true,
     participants: [{ team: 'not-a-team' }], // fails the table's CHECK after the game inserts
   }});
   expect(res.status()).toBe(500);
+  expect((await (await request.get('/api/sessions')).json()).length).toBe(sessionsBefore); // no orphan session
   expect((await (await request.get('/api/queue')).json()).queue).toHaveLength(1);
   expect(fs.existsSync(file)).toBe(true);
   expect(fs.existsSync(path.join(inbox, 'processed', path.basename(file)))).toBe(false);
   await request.delete(`/api/queue/${path.basename(file)}`);
-});
-
-test('games join a session by when they were played', async ({ request }) => {
-  const iso = (d) => d.toISOString().slice(0, 19);
-  const agoMin = (m) => { const d = new Date(Date.now() + new Date().getTimezoneOffset() * -60000 - m * 60000); return iso(d); };
-  const save = async (played_at) => (await (await request.post('/api/matches', { data: {
-    map: 'Ilios', outcome: 'Win', my_heroes: [{ hero: 'Tracer', pct: 100 }], played_at,
-  }})).json()).id;
-  const sessionOf = async (id) => (await (await request.get(`/api/matches/${id}`)).json()).session_id;
-
-  const { id: sess } = await (await request.post('/api/sessions', { data: { goal: 'timing' } })).json();
-  expect(await sessionOf(await save(agoMin(0)))).toBe(sess);
-  expect(await sessionOf(await save(agoMin(30)))).toBe(sess);   // started the session late
-  expect(await sessionOf(await save(agoMin(600)))).toBeNull();  // an old screenshot confirmed today
-  await request.post(`/api/sessions/${sess}/end`);
-  expect(await sessionOf(await save(agoMin(-60)))).toBeNull();  // after it ended
 });
 
 test('backup copies the database and screenshots to the chosen folder', async ({ request }) => {

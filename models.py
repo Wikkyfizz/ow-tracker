@@ -52,6 +52,7 @@ class MatchCreate(BaseModel):
     mitigation: Optional[int] = None
     game_length_s: Optional[int] = None
     session_id: Optional[int] = None
+    new_session: bool = False  # start a new session with this game
     notes: str = ""
     tags: str = ""
     bans: list[str] = []

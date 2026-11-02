@@ -3,9 +3,10 @@ import os
 import threading
 import time
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
@@ -250,9 +251,36 @@ def _archive_queue_item(item: dict, subfolder: str):
             _archive_screenshot(item[key], subfolder)
 
 
+def _learn_hero_names(item: dict, played_heroes: list, confirmed: list):
+    """A hero the player had to pick by hand is read from its Summary card next time.
+    The game is already saved, so a failure here must not fail the request."""
+    from parser.hero_names import learn_cards
+    try:
+        learned = learn_cards(item.get("linked_path") or item["path"], played_heroes,
+                              [(e.hero, e.pct) for e in confirmed])
+        if learned:
+            print(f"[hero names] learned {', '.join(learned)}")
+    except Exception as e:
+        print(f"[hero names] could not learn from {item.get('filename')}: {e}")
+
+
+def _wait_until_readable(path: str, tries: int = 20, delay_s: float = 0.25):
+    """The watcher fires as a file is created, while its writer may still hold it open.
+    Reading then fails with a permission error or a truncated image."""
+    from PIL import Image
+    for _ in range(tries):
+        try:
+            with Image.open(path) as img:
+                img.load()
+            return
+        except OSError:
+            time.sleep(delay_s)
+
+
 def _handle_new_screenshot(path: str):
     from parser.pipeline import parse_screenshot
     settings = load_settings()
+    _wait_until_readable(path)
     try:
         result = parse_screenshot(path, username=settings.get("username", ""))
         _enqueue_screenshot({
@@ -319,13 +347,7 @@ def create_match(body: MatchCreate):
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)
 
-        session_id = body.session_id
-        if body.is_historical:
-            session_id = None
-        elif body.played_at:
-            session_id = _session_for_time(conn, body.played_at)
-        elif session_id is None:
-            session_id = _resolve_session(conn)
+        session_id = _choose_session(conn, body)
 
         # Timestamps are naive LOCAL time throughout (OCR reads the game's local
         # clock; sessions stamp datetime.now()) so session idle math and ordering
@@ -374,6 +396,8 @@ def create_match(body: MatchCreate):
             ),
         )
         match_id = cur.lastrowid
+        if body.played_at:
+            _fit_session_to_game(conn, session_id, body.played_at)
         if participants:
             conn.executemany(
                 """INSERT INTO match_participants
@@ -384,6 +408,8 @@ def create_match(body: MatchCreate):
                   json.dumps(p.stats), p.name_confidence, p.slot, int(p.is_me))
                  for p in participants]
             )
+    if parsed and parsed.get("played_heroes"):
+        _learn_hero_names(item, parsed["played_heroes"], body.my_heroes)
     # Only once the game is committed: a failed save must leave its queue item and files.
     if body.screenshot_path:
         queue_remove(filename)
@@ -423,6 +449,8 @@ def update_match(match_id: int, body: MatchUpdate):
         enemy_comp = body.enemy_comp or db.derive_comp([e.hero for e in body.enemy_heroes], archetypes, roles)
         stack_size = 1 + len(body.teammates) if body.teammates else 1
         played_at = body.played_at.isoformat() if body.played_at else existing["played_at"]
+        session_id = _choose_session(conn, body, played_at=datetime.fromisoformat(played_at),
+                                     keep=existing["session_id"])
         rank_score = None
         if body.rank_tier and body.rank_division is not None and body.rank_pct is not None:
             rank_score = db.rank_to_score(body.rank_tier, body.rank_division, body.rank_pct)
@@ -431,7 +459,7 @@ def update_match(match_id: int, body: MatchUpdate):
                played_at=?, map=?, outcome=?, my_heroes=?, enemy_heroes=?, my_comp=?, enemy_comp=?,
                rank_tier=?, rank_division=?, rank_pct=?, rank_score=?,
                elims=?, deaths=?, assists=?, damage=?, healing=?, mitigation=?,
-               game_length_s=?, notes=?, tags=?, bans=?, teammates=?, stack_size=?,
+               game_length_s=?, session_id=?, notes=?, tags=?, bans=?, teammates=?, stack_size=?,
                practiced=?, practice_notes=?
                WHERE id=?""",
             (
@@ -442,11 +470,17 @@ def update_match(match_id: int, body: MatchUpdate):
                 body.rank_tier, body.rank_division, body.rank_pct, rank_score,
                 body.elims, body.deaths, body.assists,
                 body.damage, body.healing, body.mitigation,
-                body.game_length_s, body.notes, body.tags,
+                body.game_length_s, session_id, body.notes, body.tags,
                 json.dumps(body.bans), json.dumps(body.teammates), stack_size,
                 body.practiced, body.practice_notes, match_id,
             ),
         )
+        _fit_session_to_game(conn, session_id, datetime.fromisoformat(played_at))
+        # A session whose only game just moved out shouldn't linger as an empty card.
+        old_session = existing["session_id"]
+        if old_session and old_session != session_id and not conn.execute(
+                "SELECT 1 FROM matches WHERE session_id=?", (old_session,)).fetchone():
+            conn.execute("DELETE FROM sessions WHERE id=?", (old_session,))
         # Keep the player's scoreboard row in step with the corrected numbers.
         me = conn.execute("SELECT id, stats FROM match_participants WHERE match_id=? AND is_me=1",
                           (match_id,)).fetchone()
@@ -838,6 +872,15 @@ def get_active_session():
     return {"session": dict(row) if row else None}
 
 
+@app.get("/api/sessions/for-time")
+def session_for_time(played_at: Optional[datetime] = None):
+    """The session a game would join on its own, or null when the player has to choose."""
+    with db.get_conn() as conn:
+        _auto_close_sessions(conn)
+        session_id = _session_for_time(conn, played_at) if played_at else _resolve_session(conn)
+    return {"session_id": session_id}
+
+
 @app.post("/api/sessions", status_code=201)
 def create_session(body: SessionCreate):
     with db.get_conn() as conn:
@@ -990,20 +1033,81 @@ async def parse_upload(file: UploadFile = File(...)):
 # ── Session resolution ────────────────────────────────────────────────────────
 
 SESSION_START_GRACE_S = 3600  # people often hit Start a game or two into a sitting
+SESSION_IDLE_S = 3600         # same limit as _auto_close_sessions
 
 
 def _session_for_time(conn, played_at: datetime):
     """The session a game belongs to by when it was played, not when it was confirmed.
     Otherwise confirming yesterday's screenshot files it under today's session."""
     rows = conn.execute(
-        "SELECT id, started_at, ended_at FROM sessions WHERE started_at IS NOT NULL ORDER BY started_at DESC"
+        """SELECT s.id, s.started_at, s.ended_at, MAX(m.played_at) AS last_game
+           FROM sessions s LEFT JOIN matches m ON m.session_id = s.id
+           WHERE s.started_at IS NOT NULL
+           GROUP BY s.id ORDER BY s.ended_at IS NULL DESC, s.started_at DESC"""
     ).fetchall()
     for s in rows:
         started = datetime.fromisoformat(s["started_at"])
-        ended = datetime.fromisoformat(s["ended_at"]) if s["ended_at"] else datetime.now()
+        if not s["ended_at"]:
+            ended = datetime.now()
+        else:
+            ended = datetime.fromisoformat(s["ended_at"])
+            # Auto-close stops the clock at the last game, so games confirmed in a batch
+            # after the idle limit still join their sitting. End Session stamps a later
+            # time and means it: nothing played after that joins.
+            if s["last_game"] and ended <= datetime.fromisoformat(s["last_game"]):
+                ended += timedelta(seconds=SESSION_IDLE_S)
         if (started - played_at).total_seconds() <= SESSION_START_GRACE_S and played_at <= ended:
             return s["id"]
     return None
+
+
+def _choose_session(conn, body, played_at=None, keep=None):
+    """Every game belongs to a session: a new one, one the player picked, or `keep`
+    (the game's current session, on edit). Otherwise the one its time falls in."""
+    played_at = played_at or body.played_at
+    if body.new_session:
+        return _new_session_for_game(conn, played_at or datetime.now())
+    if body.session_id is not None:
+        if not conn.execute("SELECT 1 FROM sessions WHERE id=?", (body.session_id,)).fetchone():
+            raise HTTPException(400, "Session not found")
+        return body.session_id
+    session_id = keep or (_session_for_time(conn, played_at) if played_at else _resolve_session(conn))
+    if session_id is None:
+        raise HTTPException(400, "Choose a session: start a new one or pick an old one")
+    return session_id
+
+
+def _new_session_for_game(conn, played_at: datetime) -> int:
+    """Start a session at the game's own time. It replaces a running session this game
+    came after, and is already over if the game is older than the idle limit."""
+    running = conn.execute(
+        """SELECT s.id, s.started_at, MAX(m.played_at) AS last_game
+           FROM sessions s LEFT JOIN matches m ON m.session_id = s.id
+           WHERE s.ended_at IS NULL AND s.started_at IS NOT NULL GROUP BY s.id"""
+    ).fetchall()
+    for s in running:
+        if played_at < datetime.fromisoformat(s["last_game"] or s["started_at"]):
+            continue
+        if s["last_game"]:
+            conn.execute("UPDATE sessions SET ended_at=? WHERE id=?", (s["last_game"], s["id"]))
+        else:
+            conn.execute("DELETE FROM sessions WHERE id=?", (s["id"],))
+    over = (datetime.now() - played_at).total_seconds() > SESSION_IDLE_S
+    cur = conn.execute(
+        "INSERT INTO sessions (date, started_at, ended_at) VALUES (?,?,?)",
+        (played_at.date().isoformat(), played_at.isoformat(), played_at.isoformat() if over else None)
+    )
+    return cur.lastrowid
+
+
+def _fit_session_to_game(conn, session_id: int, played_at: datetime):
+    """Stretch a session's times to cover a game added earlier or later than them."""
+    s = conn.execute("SELECT started_at, ended_at FROM sessions WHERE id=?", (session_id,)).fetchone()
+    if s["started_at"] and played_at < datetime.fromisoformat(s["started_at"]):
+        conn.execute("UPDATE sessions SET started_at=?, date=? WHERE id=?",
+                     (played_at.isoformat(), played_at.date().isoformat(), session_id))
+    if s["ended_at"] and played_at > datetime.fromisoformat(s["ended_at"]):
+        conn.execute("UPDATE sessions SET ended_at=? WHERE id=?", (played_at.isoformat(), session_id))
 
 
 def _resolve_session(conn):
