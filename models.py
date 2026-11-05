@@ -62,6 +62,8 @@ class MatchCreate(BaseModel):
     data_source: str = "manual"
     practiced: Optional[str] = None
     practice_notes: str = ""
+    # How the player felt after the game: 1 great game … 5 giga tilted. None = skipped.
+    tilt: Optional[int] = Field(None, ge=1, le=5)
     is_historical: bool = False
     participants: list[MatchParticipant] = []
     # Confirmed hero per scoreboard row, {"my": [...], "enemy": [...]}; null = unknown.

@@ -100,6 +100,48 @@ function wrClass(wr) {
 function pct(v)    { return v != null ? (v * 100).toFixed(1) + '%' : '—'; }
 function wrBar(wr) { return `<span class="wr-bar" style="width:${(wr*60).toFixed(0)}px"></span>`; }
 function numFmt(n) { if (n == null) return '—'; return n >= 1000 ? (n/1000).toFixed(1)+'k' : n; }
+// ── Tilt gauge: how the player felt after a game, 1 great game … 5 giga tilted ──
+const TILT = [
+  null,
+  { label: 'Great game',  color: '#22c55e', mouth: 'M7 13.5 Q12 19 17 13.5' },
+  { label: 'Good',        color: '#84cc16', mouth: 'M8 14.5 Q12 17 16 14.5' },
+  { label: 'Meh',         color: '#eab308', mouth: 'M8 15.5 L16 15.5' },
+  { label: 'Tilting',     color: '#f97316', mouth: 'M8 16.5 Q12 14 16 16.5', brows: 'M7 8 L10.5 9.5 M17 8 L13.5 9.5' },
+  { label: 'Giga tilted', color: '#ef4444', mouth: 'M7.5 17.5 Q12 12.5 16.5 17.5', brows: 'M6 7 L10.5 9.8 M18 7 L13.5 9.8' },
+];
+function tiltFace(level, size = 30) {
+  const t = TILT[level];
+  if (!t) return '';
+  return `<svg class="tilt-face" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="10.5" fill="${t.color}" fill-opacity="${level === 5 ? .28 : .14}" stroke="${t.color}" stroke-width="1.6"/>
+    <circle cx="9" cy="10.6" r="1.2" fill="${t.color}"/><circle cx="15" cy="10.6" r="1.2" fill="${t.color}"/>
+    ${t.brows ? `<path d="${t.brows}" stroke="${t.color}" stroke-width="1.6" stroke-linecap="round" fill="none"/>` : ''}
+    <path d="${t.mouth}" stroke="${t.color}" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  </svg>`;
+}
+let tiltSelection = null;
+function setTilt(level) {
+  tiltSelection = level || null;
+  document.querySelectorAll('#m-tilt .tilt-btn').forEach(b => {
+    const on = Number(b.dataset.level) === tiltSelection;
+    b.classList.toggle('selected', on);
+    b.setAttribute('aria-checked', on);
+  });
+  document.getElementById('m-tilt-label').textContent = tiltSelection ? TILT[tiltSelection].label : 'Optional';
+}
+(function buildTiltGauge() {
+  const el = document.getElementById('m-tilt');
+  el.innerHTML = [1, 2, 3, 4, 5].map(l =>
+    `<button type="button" class="tilt-btn" role="radio" aria-checked="false" data-level="${l}"
+       title="${TILT[l].label}" aria-label="${TILT[l].label}">${tiltFace(l)}</button>`
+  ).join('') + '<span class="tilt-label" id="m-tilt-label">Optional</span>';
+  // Clicking the chosen face again clears it.
+  el.addEventListener('click', e => {
+    const b = e.target.closest('.tilt-btn');
+    if (b) setTilt(Number(b.dataset.level) === tiltSelection ? null : Number(b.dataset.level));
+  });
+})();
+
 function numOrNull(id) {
   const v = document.getElementById(id).value;
   return v === '' ? null : parseInt(v);
@@ -657,6 +699,7 @@ async function openGameModal(prefill, isHistorical) {
   document.getElementById('m-practice-notes').value = '';
   document.getElementById('modal-msg').textContent   = '';
   document.querySelectorAll('.practice-btn').forEach(b => b.classList.remove('selected'));
+  setTilt(null);
   document.querySelectorAll('[id^="mf-"]').forEach(el => {
     el.classList.remove('field-ocr-loading', 'field-ocr-low');
   });
@@ -707,6 +750,7 @@ async function openGameModal(prefill, isHistorical) {
       JSON.parse(e.bans || '[]').forEach(b => mModalBans.push(b));
       practiceSelection = e.practiced || null;
       document.querySelectorAll('.practice-btn').forEach(b => b.classList.toggle('selected', b.dataset.val === e.practiced));
+      setTilt(e.tilt);
     }
 
     if ((prefill.warnings || []).length) {
@@ -1014,6 +1058,7 @@ async function saveModalGame() {
     is_historical: modalIsHistorical,
     practiced:     (editingMatchId || (activeSession && !modalIsHistorical)) ? practiceSelection : null,
     practice_notes: document.getElementById('m-practice-notes').value,
+    tilt:          tiltSelection,
   };
   // Send the local wall-clock time as-is (naive). The whole app stores naive
   // local timestamps (OCR reads the game's local clock; the server stamps
@@ -1386,6 +1431,7 @@ function renderMatchCard(m) {
     <div class="match-card-header">
       <span class="match-card-outcome outcome-${m.outcome}">${m.outcome}</span>
       <span class="match-card-map">${m.map}</span>
+      ${m.tilt ? `<span class="match-card-tilt" title="${TILT[m.tilt].label}">${tiltFace(m.tilt, 18)}</span>` : ''}
       <span class="match-card-heroes">${heroStr}</span>
       ${kda ? `<span class="match-card-kda">${kda}</span>` : ''}
       <span style="font-size:12px;color:var(--dim);flex-shrink:0;white-space:nowrap">${date}</span>

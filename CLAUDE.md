@@ -167,6 +167,9 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
   save/discard flows MOVE the queue item's file.
 - Template matching: about 85% correct on screenshots a template didn't come from (2026-10-31; labels came from detection itself, so treat this as an estimate).
 - Design doc for Queue hero correction panel: `docs/hero-detection-design.md`
+- Future stats (when to stop, streaks, session length, deaths vs team/lobby → next game, matchups):
+  `docs/stats-backlog.md`. It lists what's buildable from saved data and what needed new capture:
+  `matches.tilt`, the five-face gauge on the game form (1 great game … 5 giga tilted, optional).
 - PERSONAL tab parsing: stub only — major future feature, do not implement yet
 - Remaining UI backlog: hero icons (needs asset pipeline) — see vault memory
   `project_ow-tracker-ui-backlog.md`

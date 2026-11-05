@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS matches (
     practice_notes  TEXT DEFAULT '',
     is_historical   INTEGER DEFAULT 0,
     raw_parse       TEXT DEFAULT '',
+    tilt            INTEGER DEFAULT NULL,  -- how the player felt after it: 1 great game … 5 giga tilted
     FOREIGN KEY (map) REFERENCES maps(name),
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
@@ -214,6 +215,7 @@ def _migrate_db(conn):
         ("practice_notes", "TEXT DEFAULT ''"),
         ("is_historical",  "INTEGER DEFAULT 0"),
         ("raw_parse",      "TEXT DEFAULT ''"),
+        ("tilt",           "INTEGER DEFAULT NULL"),
     ]:
         if col not in match_cols:
             conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {defn}")

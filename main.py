@@ -382,8 +382,8 @@ def create_match(body: MatchCreate):
                 elims, deaths, assists, damage, healing, mitigation,
                 game_length_s, session_id, notes, tags, bans, teammates,
                 stack_size, screenshot_path, data_source,
-                practiced, practice_notes, is_historical, raw_parse)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                practiced, practice_notes, is_historical, raw_parse, tilt)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 played_at.isoformat(),
                 body.map, body.outcome,
@@ -400,7 +400,7 @@ def create_match(body: MatchCreate):
                 stack_size,
                 body.screenshot_path, "screenshot" if parsed else body.data_source,
                 body.practiced, body.practice_notes, int(body.is_historical),
-                json.dumps(parsed) if parsed else "",
+                json.dumps(parsed) if parsed else "", body.tilt,
             ),
         )
         match_id = cur.lastrowid
@@ -468,7 +468,7 @@ def update_match(match_id: int, body: MatchUpdate):
                rank_tier=?, rank_division=?, rank_pct=?, rank_score=?,
                elims=?, deaths=?, assists=?, damage=?, healing=?, mitigation=?,
                game_length_s=?, session_id=?, notes=?, tags=?, bans=?, teammates=?, stack_size=?,
-               practiced=?, practice_notes=?
+               practiced=?, practice_notes=?, tilt=?
                WHERE id=?""",
             (
                 played_at, body.map, body.outcome,
@@ -480,7 +480,7 @@ def update_match(match_id: int, body: MatchUpdate):
                 body.damage, body.healing, body.mitigation,
                 body.game_length_s, session_id, body.notes, body.tags,
                 json.dumps(body.bans), json.dumps(body.teammates), stack_size,
-                body.practiced, body.practice_notes, match_id,
+                body.practiced, body.practice_notes, body.tilt, match_id,
             ),
         )
         _fit_session_to_game(conn, session_id, datetime.fromisoformat(played_at))

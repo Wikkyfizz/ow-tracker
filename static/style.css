@@ -790,6 +790,21 @@ select option { background: var(--surface); }
   white-space: nowrap; vertical-align: middle; margin-left: 4px;
 }
 
+/* ── Tilt gauge (game form) ──────────────────────────────────────────────── */
+.tilt-gauge { display: flex; align-items: center; gap: 6px; }
+.tilt-btn {
+  display: flex; padding: 4px; border-radius: 50%;
+  background: none; border: 2px solid transparent; cursor: pointer;
+  opacity: .45; filter: saturate(.6);
+  transition: opacity .12s, transform .12s, border-color .12s, filter .12s;
+}
+.tilt-btn:hover { opacity: .85; filter: none; }
+.tilt-btn.selected { opacity: 1; filter: none; transform: scale(1.15); border-color: var(--border); }
+.tilt-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tilt-label { margin-left: 8px; font-size: 13px; color: var(--muted); }
+.tilt-btn.selected ~ .tilt-label { color: var(--text); }
+.match-card-tilt { display: flex; flex-shrink: 0; }
+
 /* ── First-run setup banner ──────────────────────────────────────────────── */
 .setup-banner {
   margin: 12px 24px 0; padding: 10px 14px; border-radius: 6px;
