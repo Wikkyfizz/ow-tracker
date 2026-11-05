@@ -13,9 +13,11 @@ import re
 from pathlib import Path
 from PIL import Image, ImageDraw
 
+import local_paths
+
 PORTRAITS_DIR = Path(__file__).parent / "parser" / "portraits"
-INBOX         = Path(r"E:\Claude stuff\OW screenshots")
-SHEETS_DIR    = Path(r"E:\Claude stuff\OW screenshots\portrait_library\sheets_v2")
+INBOX         = local_paths.inbox()
+SHEETS_DIR    = INBOX / "portrait_library" / "sheets_v2"
 
 PORTRAITS_DIR.mkdir(parents=True, exist_ok=True)
 (PORTRAITS_DIR / "my").mkdir(exist_ok=True)

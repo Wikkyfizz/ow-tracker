@@ -11,9 +11,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from parser.icons import extract_portrait_crop, CANONICAL_W, CANONICAL_H
 from save_portrait_templates import LABELS
+import local_paths
 
-INBOX = Path(r"E:\Claude stuff\OW screenshots")
-OUT   = Path(r"E:\Claude stuff\OW screenshots\portrait_library\unknowns_grid.png")
+INBOX = local_paths.inbox()
+OUT   = INBOX / "portrait_library" / "unknowns_grid.png"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
 SHEETS = [

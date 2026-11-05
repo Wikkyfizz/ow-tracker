@@ -6,28 +6,43 @@ Personal Overwatch 2 stat tracker. Since Blizzard provides no match history or p
 
 ## Starting the app
 
+OW Tracker runs on Windows.
+
 ### One-time setup
 
-1. **Install Python** (3.10 or newer) if you don't have it: https://www.python.org/downloads/
-2. **Install Tesseract OCR** — this is what reads text from your screenshots:
+1. **Download OW Tracker.** On GitHub, click **Code → Download ZIP**, then unzip it somewhere you'll keep it (or `git clone` it).
+2. **Install Python** (3.10 or newer): https://www.python.org/downloads/
+   The default install options are fine.
+3. **Install Tesseract OCR.** It's the part that reads text from your screenshots:
    https://github.com/UB-Mannheim/tesseract/wiki
-   During install, check the option to add it to your system PATH.
-3. **Install the app's dependencies.** Open a terminal in this folder and run:
-   ```
-   venv\Scripts\pip install -r requirements.txt
-   ```
-   (If `venv` doesn't exist yet, run `python -m venv venv` first, then the line above.)
+   The default install options are fine. OW Tracker finds it whether or not it's on your PATH.
 
 ### Every time you want to use it
 
-1. Open a terminal in this folder.
-2. Run:
-   ```
-   venv\Scripts\python.exe main.py
-   ```
-3. Open your browser and go to: **http://localhost:8000**
+Double-click **`start.bat`** in the OW Tracker folder. The first time, it sets itself up, which takes a few minutes. After that it starts in seconds and opens **http://localhost:8000** in your browser.
 
-The app runs as a mini web server on your own machine — nothing is sent online, and only you can access it. To stop it, press `Ctrl+C` in the terminal.
+To stop it, close the black window that `start.bat` opened.
+
+The app runs as a mini web server on your own machine. Your games stay on your computer and only you can see the app. The only things it fetches online are the charts library and, if you ask for it in Settings, your career stats from OverFast.
+
+### First time in the app
+
+Open **Settings** and fill in:
+- **Username**: your in-game name exactly as it appears on the scoreboard, so the app can find your row.
+- **Inbox Folder**: where you'll save screenshots. The default is `C:\OW-Tracker\inbox`, and it's created for you.
+
+If the app shows a yellow banner saying Tesseract isn't installed, do step 3 above, then close and reopen OW Tracker.
+
+<details>
+<summary>Starting it from a terminal instead</summary>
+
+```
+py -3.12 -m venv venv
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe main.py
+```
+Only the last line is needed after the first time. If Tesseract is somewhere unusual, set the `TESSERACT_CMD` environment variable to the full path of `tesseract.exe`.
+</details>
 
 ---
 
@@ -102,7 +117,7 @@ The review inbox. When a screenshot is parsed, it appears here with all extracte
 
 #### Settings
 - **Username** — your in-game name (used to find your row on the scoreboard when parsing)
-- **Battletag** — your full Battletag including the number (e.g. `Drowzy-11334`), used to fetch your career stats from OverFast
+- **Battletag** — your full Battletag including the number (e.g. `Name-12345`), used to fetch your career stats from OverFast
 - **Inbox Folder** — the folder the app watches for new screenshots
 - **Tracked Players** — friends you play with; the app flags when they appear in your matches and tracks your win rate with them
 

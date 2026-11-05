@@ -82,7 +82,7 @@ Examples:
 
 ## Parser pipeline
 
-`parser/pipeline.py:parse_screenshot(path, username="DROWZY")` is the main entry point.
+`parser/pipeline.py:parse_screenshot(path, username="")` is the main entry point.
 
 - Calls `parser/ocr.py:detect_tab()` to identify which screenshot type was dropped
 - Dispatches to `_parse_summary_tab()`, `_parse_team_tab()`, or `_parse_personal_tab()`
@@ -140,7 +140,7 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 ## Inbox and queue
 
-- Inbox folder: `E:\Claude stuff\OW screenshots` (from `settings.json`)
+- Inbox folder: `inbox_folder` in `settings.json` (default `C:\OW-Tracker\inbox`, created at startup). Dev scripts read it through `local_paths.inbox()`.
 - Queue state: `inbox_queue.json` in project root
 - Watchdog watches inbox folder; new screenshots are auto-parsed into the queue
 - Queue UI (`#page-queue`) shows parsed data for user review + submit
@@ -151,6 +151,7 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 
 - **Plan and handoff:** the Roadmap section of the vault's `wiki/personal/ow-tracker.md`. Milestone 1 is built; its check (10 real games) is pending. Rank is deferred.
 - **Per-user data is never committed:** `settings.json` (copy `settings.example.json`), `player_names/`, the DB, screenshots. No personal names or paths in code or defaults.
+- **A fresh clone must run for someone else:** `start.bat` creates the venv, installs `requirements.txt`, and starts the app. `parser/tesseract.py` finds Tesseract (`TESSERACT_CMD`, PATH, Program Files, AppData), and `main.py` applies it at import. `/api/health` drives a banner in the app if Tesseract is missing. Everything the app reads at runtime (`data/*.csv`, `parser/portraits/`, `parser/hero_names/`, `parser/hero_icons/`, `static/`) is tracked. Check a change against a fresh `git clone` when it adds a runtime file.
 - **Who was in the party:** `parser/names.py` compares images of scoreboard names, since OCR can't read them reliably. A match only prefills; the user confirms at Confirm or Edit. `/api/players/remember` saves the template and adds them to the list.
 - **Backups:** `backup.py`, to `backup_folder` in Settings, at startup and daily.
 - See `docs/ui-pass-2.md` for UI Pass 2.

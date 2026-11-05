@@ -12,9 +12,10 @@ from parser.ocr import (
     detect_tab, extract_summary, extract_all_rows, extract_personal,
     SUMMARY_REGIONS, SUMMARY_BULLET_SCAN_Y, _scan_summary_bullets, _ocr_line, _preprocess,
 )
+import local_paths
 
 
-INBOX = Path(r"E:\Claude stuff\OW screenshots")
+INBOX = local_paths.inbox()
 
 
 def _divider(char="-", n=60):

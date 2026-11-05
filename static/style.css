@@ -790,6 +790,16 @@ select option { background: var(--surface); }
   white-space: nowrap; vertical-align: middle; margin-left: 4px;
 }
 
+/* ── First-run setup banner ──────────────────────────────────────────────── */
+.setup-banner {
+  margin: 12px 24px 0; padding: 10px 14px; border-radius: 6px;
+  background: rgba(240,192,64,.08); border: 1px solid rgba(240,192,64,.3);
+  color: var(--text); font-size: 13px; line-height: 1.5;
+}
+.setup-banner[hidden] { display: none; }
+.setup-banner b { color: var(--gold); }
+.setup-banner a { color: var(--gold); }
+
 /* ── Explore (Analytics tab) ─────────────────────────────────────────────── */
 .x-check {
   display: flex; align-items: center; gap: 6px; align-self: flex-end;

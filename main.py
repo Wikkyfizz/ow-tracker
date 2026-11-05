@@ -18,6 +18,13 @@ import explore
 from models import (MatchCreate, MatchParticipant, MatchUpdate, MapUpdate, TrackedPlayer, Settings,
                     ParsedMatch, SessionCreate, SessionUpdate)
 from parser.pipeline import build_participants
+from parser import tesseract
+
+# Overrides the default install path set in parser/ocr.py.
+TESSERACT_PATH = tesseract.configure()
+if not TESSERACT_PATH:
+    print("[setup] Tesseract OCR not found: screenshots can't be read until it's installed. "
+          "See README, step 2.")
 
 # OW_TRACKER_SETTINGS / OW_TRACKER_QUEUE let the e2e harness isolate state (see e2e/).
 SETTINGS_PATH = Path(os.environ.get("OW_TRACKER_SETTINGS") or (Path(__file__).parent / "settings.json"))
@@ -724,6 +731,13 @@ def api_vs_enemy_hero():
 @app.get("/api/analytics/role-matchups")
 def api_role_matchups(role: str = "Tank", grain: str = "hero"):
     return analytics.role_matchups(role, grain)
+
+
+# ── API: setup health ─────────────────────────────────────────────────────────
+
+@app.get("/api/health")
+def api_health():
+    return {"tesseract": TESSERACT_PATH is not None}
 
 
 # ── API: explore (questions over the full scoreboard) ─────────────────────────

@@ -2157,3 +2157,5 @@ document.getElementById('baseline-fetch-btn').addEventListener('click', async ()
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 init();
+// First-run check: say so up front if screenshots can't be read on this machine.
+api.get('/api/health').then(h => { document.getElementById('setup-banner').hidden = h.tesseract; }).catch(() => {});

@@ -1,4 +1,7 @@
 ow_tracker.db
+ow_tracker.mock.db
+ow_tracker*.db-wal
+ow_tracker*.db-shm
 venv/
 inbox_queue.json
 __pycache__/
@@ -22,3 +25,6 @@ docs/mockups/_preview-*.png
 settings.json
 player_names/
 *.tmp
+
+# Claude Code: launch.json (how to start the app) is shared; local permissions aren't.
+.claude/settings.local.json

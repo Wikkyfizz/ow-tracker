@@ -10,8 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from parser.icons import extract_portrait_crop, PORTRAITS_DIR
+import local_paths
 
-INBOX = Path(r"E:\Claude stuff\OW screenshots")
+INBOX = local_paths.inbox()
 
 
 def _slug(name: str) -> str:
