@@ -104,6 +104,8 @@ The player's row comes from a merge with SUMMARY, or from `names.find_own_row`; 
 
 `ocr._ocr_team_numbers_fast()` reads all 30 numbers of a 5-row team block in **one** Tesseract `image_to_data` pass, binning digit-words by row (y) and column (x). Only empty cells fall back to the slow multi-strategy `_ocr_number`. ~6× faster than the old per-cell approach *and* more accurate (reads dim "0"s and comma numbers the per-cell path missed). `extract_all_rows(img, read_names=False)` skips the ~2s of per-row name OCR — the pipeline passes `read_names=bool(tracked_players)` since names are only useful for tracked-player matching.
 
+Tesseract sometimes returns a row's E, A and D digits as one word ("13 0 8" → "1308"), which used to land in A and caused the impossible assists (1308, 8136). A word overlapping two columns is now skipped, and a 3-digit E/A/D is treated as unread, so those cells go to the per-cell fallback, which crops the row's y as measured from that pass's words. A full team keeps the fixed rows unless measured rows are >42px off: that only happens to the enemy team when the player's team has a leaver. Without it, the enemy tank's row was dropped and the rest shifted up a slot. Known weakness: the per-cell read sometimes reads "11" as "1". Checks: `test_team_numbers.py`.
+
 ### Timestamps
 
 All timestamps are **naive LOCAL time** (OCR reads the game's local clock; the server stamps `datetime.now()`; the frontend sends the `datetime-local` value as-is). Do not reintroduce `utcnow()` / `toISOString()` — mixing frames breaks session idle-close math and chronological ordering.
@@ -156,7 +158,7 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 - See `docs/ui-pass-2.md` for UI Pass 2.
 - `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored; the only backup is a manual copy from 2026-11-01 on the same disk.
 - Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
-- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`, `test_explore.py`.
+- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`, `test_explore.py`, `test_team_numbers.py`.
 - Analytics → Explore tab (`explore.py`, `/api/explore/*`): questions over every scoreboard row in
   `match_participants` (a teammate/enemy of a role meeting a stat condition, you vs another role, your
   stats by hero; optional per-10-min). Assists above 99 count as unread: the TEAM-tab OCR sometimes

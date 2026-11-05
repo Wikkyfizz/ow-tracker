@@ -392,7 +392,7 @@ def _parse_datetime(raw: str) -> str | None:
 
 # ── TEAM tab extraction ───────────────────────────────────────────────────────
 
-def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
+def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[dict], list[int | None]]:
     """
     Read every stat number for a whole 5-row team block in ONE Tesseract pass.
 
@@ -400,12 +400,14 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
     word-level boxes, then bins each detected digit-word by its y-centre (→ row)
     and x-centre (→ column). Returns one {stat: int | None} dict per row; a None
     means that cell was not confidently read and the caller should fall back to
-    the slower multi-strategy per-cell _ocr_number.
+    the slower multi-strategy per-cell _ocr_number. Also returns, per row, the
+    y-centre of the digits actually found there (None if none were), so that
+    fallback can crop the real row rather than the fixed estimate.
 
     This collapses the previous 30-cells × up-to-7-passes-each approach (up to
     ~210 subprocess spawns per team) into a single spawn for the common case.
     """
-    empty = [{s: None for s in STAT_COLS} for _ in row_ys]
+    empty = ([{s: None for s in STAT_COLS} for _ in row_ys], [None] * len(row_ys))
     x1 = STAT_COLS["elims"][0]
     x2 = STAT_COLS["mitigation"][1]
     y_top = min(row_ys) - ROW_HALF_H
@@ -419,14 +421,23 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
 
     col_centres = {s: (cl + cr) / 2.0 for s, (cl, cr) in STAT_COLS.items()}
     buckets = [{s: [] for s in STAT_COLS} for _ in row_ys]
+    seen_ys = [[] for _ in row_ys]
     for i in range(len(data["text"])):
         digits = (data["text"][i] or "").strip().replace(",", "")
         if not digits.isdigit():
             continue
-        cx = x1 + data["left"][i] + data["width"][i] / 2.0
+        wl = x1 + data["left"][i]
+        wr = wl + data["width"][i]
+        cx = (wl + wr) / 2.0
         cy = y_top + data["top"][i] + data["height"][i] / 2.0
         ri = min(range(len(row_ys)), key=lambda k: abs(row_ys[k] - cy))
         if abs(row_ys[ri] - cy) > ROW_HALF_H:   # not inside any row band — drop noise
+            continue
+        seen_ys[ri].append(cy)
+        if _spans_columns(wl, wr):
+            # Tesseract sometimes returns a row's E, A and D digits as one word
+            # ("13 0 8" -> "1308"), which would land in the middle column. Skip it so
+            # those cells fall back to the per-cell read, which can't merge columns.
             continue
         col = next((s for s, (cl, cr) in STAT_COLS.items() if cl <= cx < cr), None)
         if col is None:  # landed in a gutter between columns — snap to nearest
@@ -441,9 +452,24 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> list[dict]:
                 row[s] = None
             else:
                 words.sort()  # left-to-right, so comma-split numbers rejoin in order
-                row[s] = int("".join(d for _, d in words))
+                v = int("".join(d for _, d in words))
+                # E/A/D are never 3 digits; a bigger value is a merged read.
+                row[s] = None if s in _SMALL_STATS and v > _SMALL_STAT_MAX else v
         out.append(row)
-    return out
+    found = [int(sorted(ys)[len(ys) // 2]) if ys else None for ys in seen_ys]
+    return out, found
+
+
+_SMALL_STATS = ("elims", "assists", "deaths")
+_SMALL_STAT_MAX = 99
+_COLUMN_OVERLAP_PX = 4  # a word reaching this far into a second column spans two
+_ROW_SHIFT_PX = int(1.5 * ROW_HALF_H)  # a full team this far off the fixed rows is measured
+
+
+def _spans_columns(left: float, right: float) -> bool:
+    """True if a word's x-extent [left, right) overlaps more than one stat column."""
+    hit = sum(1 for cl, cr in STAT_COLS.values() if min(right, cr) - max(left, cl) >= _COLUMN_OVERLAP_PX)
+    return hit > 1
 
 
 def extract_all_rows(img: Image.Image) -> dict:
@@ -458,9 +484,12 @@ def extract_all_rows(img: Image.Image) -> dict:
     Names are handled by parser.names, not here.
     """
     def _read_rows(row_ys):
-        fast_rows = _ocr_team_numbers_fast(img, row_ys)
+        fast_rows, found_ys = _ocr_team_numbers_fast(img, row_ys)
         rows = []
-        for row_y, fast in zip(row_ys, fast_rows):
+        for row_y, found_y, fast in zip(row_ys, found_ys, fast_rows):
+            # Rows with player titles sit up to ~20px off the fixed estimate; a crop
+            # around the estimate can cut the digits in half, so use where they were found.
+            row_y = found_y if found_y is not None else row_y
             row = {}
             for s, (xl, xr) in STAT_COLS.items():
                 v = fast.get(s)
@@ -471,11 +500,21 @@ def extract_all_rows(img: Image.Image) -> dict:
         return rows
 
     # Full teams keep the fixed rows: measured ones shifted the binning and changed reads on
-    # 29 of 43 real scoreboards, some for the worse. A team short a player has no fixed rows.
+    # 29 of 43 real scoreboards, some for the worse. A team short a player has no fixed rows,
+    # and a full enemy team below a short one sits ~66px above the fixed rows, which would
+    # drop its first row and shift the rest up a slot. Player titles move rows by up to ~36px,
+    # so only a bigger shift than that switches a full team to measured rows.
+    def _pick(measured_ys, fixed_ys):
+        if 0 < len(measured_ys) < 5:
+            return measured_ys
+        if len(measured_ys) == 5 and max(abs(m - f) for m, f in zip(measured_ys, fixed_ys)) > _ROW_SHIFT_PX:
+            return measured_ys
+        return fixed_ys
+
     img_bgr = np.array(img.convert("RGB"))[:, :, ::-1]
     measured = _find_row_centers(img_bgr, img.width, img.height) or ([], [])
-    my_ys    = measured[0] if 0 < len(measured[0]) < 5 else MY_TEAM_ROW_Y
-    enemy_ys = measured[1] if 0 < len(measured[1]) < 5 else ENEMY_TEAM_ROW_Y
+    my_ys    = _pick(measured[0], MY_TEAM_ROW_Y)
+    enemy_ys = _pick(measured[1], ENEMY_TEAM_ROW_Y)
     return {"my_team": _read_rows(my_ys), "enemy_team": _read_rows(enemy_ys)}
 
 
