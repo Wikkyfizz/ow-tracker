@@ -1468,6 +1468,7 @@ function aEmpty(msg) {
 // ── ANALYTICS ─────────────────────────────────────────────────────────────────
 const analyticsLoaded = {};
 async function loadAnalyticsTab(tab) {
+  if (tab === 'a-explore') return loadExplore();
   if (analyticsLoaded[tab]) return;
   analyticsLoaded[tab] = true;
 
@@ -1622,6 +1623,135 @@ async function loadAnalyticsTab(tab) {
       renderARow({ label: r.label, wr: r.win_rate, gamesStr: r.games+'G', conf: r.games < 5 })
     ).join('');
   }
+}
+
+// ── EXPLORE (Analytics tab: questions over the full scoreboard) ───────────────
+const X_STATS = [
+  ['kd', 'K/D'], ['elims', 'eliminations'], ['deaths', 'deaths'], ['assists', 'assists'],
+  ['damage', 'damage'], ['healing', 'healing'], ['mitigation', 'mitigation'],
+];
+const X_LABEL = Object.fromEntries(X_STATS);
+const X_ROLE_NOUN = { Damage: 'damage player', Tank: 'tank', Support: 'support', any: 'player' };
+const X_VS_NOUN = { Tank: 'tank', Damage: 'damage players', Support: 'supports' };
+let exploreReady = false;
+
+const xEl = id => document.getElementById(id);
+function xEsc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function xFmt(stat, v) {
+  if (v == null) return '—';
+  if (stat === 'kd') return v.toFixed(2);
+  if (['elims', 'deaths', 'assists'].includes(stat)) return v.toFixed(1);
+  return Math.round(v).toLocaleString();
+}
+function xWr(v) { return v == null ? '<span class="x-dim">—</span>' : `<span class="${wrClass(v)}">${pct(v)}</span>`; }
+function xShare(n, of) { return of ? `${n} of ${of} <span class="x-dim">(${Math.round(n / of * 100)}%)</span>` : '—'; }
+function xQuery(extra) {
+  const p = new URLSearchParams(extra);
+  if (xEl('x-hero').value) p.set('hero', xEl('x-hero').value);
+  if (xEl('x-map').value)  p.set('map', xEl('x-map').value);
+  if (xEl('x-per10').checked) p.set('per10', 'true');
+  return p.toString();
+}
+
+async function loadExplore() {
+  if (!exploreReady) {
+    exploreReady = true;
+    xEl('x-c-stat').innerHTML = X_STATS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+    const [mapList, played] = await Promise.all([api.get('/api/maps'), api.get('/api/explore/by-hero')]);
+    xEl('x-map').innerHTML += mapList.map(m => `<option value="${xEsc(m.name)}">${xEsc(m.name)}</option>`).join('');
+    xEl('x-hero').innerHTML += played.heroes.map(h => `<option value="${xEsc(h.hero)}">${xEsc(h.hero)}</option>`).join('');
+    ['x-hero', 'x-map', 'x-per10'].forEach(id => xEl(id).addEventListener('change', runExploreAll));
+    ['x-c-role', 'x-c-stat', 'x-c-op'].forEach(id => xEl(id).addEventListener('change', runExploreCondition));
+    let t = null;
+    xEl('x-c-value').addEventListener('input', () => { clearTimeout(t); t = setTimeout(runExploreCondition, 300); });
+    ['x-v-team', 'x-v-role'].forEach(id => xEl(id).addEventListener('change', runExploreVersus));
+  }
+  runExploreAll();
+}
+
+function runExploreAll() { runExploreCondition(); runExploreVersus(); runExploreByHero(); }
+
+function xScope(games) {
+  const bits = [];
+  if (xEl('x-hero').value) bits.push(`on ${xEsc(xEl('x-hero').value)}`);
+  if (xEl('x-map').value)  bits.push(`on ${xEsc(xEl('x-map').value)}`);
+  xEl('x-scope').innerHTML = `Based on <b>${games}</b> game${games === 1 ? '' : 's'} with a saved scoreboard${bits.length ? ' — ' + bits.join(', ') : ''}.`;
+}
+
+async function runExploreCondition() {
+  const role = xEl('x-c-role').value, stat = xEl('x-c-stat').value, op = xEl('x-c-op').value;
+  const value = xEl('x-c-value').value;
+  if (value === '' || isNaN(Number(value))) { xEl('x-c-ans').textContent = 'Enter a number.'; xEl('x-c-body').innerHTML = ''; return; }
+  const r = await api.get('/api/explore/condition?' + xQuery({ role, stat, op, value }));
+  xScope(r.games);
+  if (!r.games) { xEl('x-c-ans').textContent = ''; xEl('x-c-body').innerHTML = aEmpty('No games match these filters.'); return; }
+  const per10 = xEl('x-per10').checked && stat !== 'kd' ? ' per 10 min' : '';
+  const cond = `${X_LABEL[stat]}${per10} ${op === 'lt' ? 'below' : 'above'} ${value}`;
+  const noun = X_ROLE_NOUN[role];
+  const line = (who, s) => `${who}: ${s.hits} of ${s.checked}` + (s.hits ? ` (you won ${pct(s.wr_when)})` : '');
+  xEl('x-c-ans').textContent = `A ${noun} with ${cond}. ${line('Your team', r.ally)}. ${line('Enemy team', r.enemy)}.`;
+  const row = (who, s) => `<tr>
+    <td>${who}</td>
+    <td class="num">${xShare(s.hits, s.checked)}</td>
+    <td class="num">${xWr(s.wr_when)}</td>
+    <td class="num">${xWr(s.wr_otherwise)}</td>
+    <td class="num x-dim">${s.unknown || ''}</td>
+  </tr>`;
+  xEl('x-c-body').innerHTML = `<table><thead><tr>
+      <th>Team</th><th>Games it happened</th><th>Your win rate then</th><th>Otherwise</th><th title="Games where that stat wasn't read">Unread</th>
+    </tr></thead><tbody>${row(role === 'any' ? 'Your teammates' : 'Your team', r.ally)}${row('Enemy team', r.enemy)}</tbody></table>`;
+}
+
+async function runExploreVersus() {
+  const team = xEl('x-v-team').value, role = xEl('x-v-role').value;
+  const r = await api.get('/api/explore/versus?' + xQuery({ team, role }));
+  if (!r.compared) {
+    xEl('x-v-ans').textContent = '';
+    xEl('x-v-body').innerHTML = aEmpty(`No games with ${team === 'enemy' ? 'an enemy' : 'a teammate'} in that role.`);
+    return;
+  }
+  const who = `${team === 'enemy' ? 'the enemy' : "your team's"} ${X_VS_NOUN[role]}`;
+  const o = r.overall;
+  xEl('x-v-ans').textContent = `You beat ${who} on most stats in ${o.better} of ${o.n} games` +
+    (o.better ? ` and won ${pct(o.wr_better)} of those` : '') +
+    (o.worse ? `; when they beat you, you won ${pct(o.wr_worse)}.` : '.');
+  const per10 = xEl('x-per10').checked;
+  const rows = r.stats.map(s => `<tr>
+    <td>${X_LABEL[s.stat]}${per10 && s.stat !== 'kd' ? ' <span class="x-dim">/10m</span>' : ''}${s.stat === 'deaths' ? ' <span class="x-dim">(lower is better)</span>' : ''}</td>
+    <td class="num">${xFmt(s.stat, s.my_avg)}</td>
+    <td class="num">${xFmt(s.stat, s.their_avg)}</td>
+    <td class="num">${xShare(s.better, s.n)}</td>
+    <td class="num">${xWr(s.wr_better)}</td>
+    <td class="num">${xWr(s.wr_worse)}</td>
+  </tr>`).join('');
+  xEl('x-v-body').innerHTML = `<table><thead><tr>
+      <th>Stat</th><th>You (avg)</th><th>Them (avg)</th><th>You were better</th><th>Win rate when better</th><th>When worse</th>
+    </tr></thead><tbody>${rows}
+    <tr class="x-total"><td>Most stats</td><td></td><td></td>
+      <td class="num">${xShare(o.better, o.n)}</td><td class="num">${xWr(o.wr_better)}</td><td class="num">${xWr(o.wr_worse)}</td></tr>
+    </tbody></table>`;
+}
+
+async function runExploreByHero() {
+  const p = new URLSearchParams();
+  if (xEl('x-map').value) p.set('map', xEl('x-map').value);
+  if (xEl('x-per10').checked) p.set('per10', 'true');
+  const r = await api.get('/api/explore/by-hero?' + p);
+  if (!r.heroes.length) { xEl('x-h-ans').textContent = ''; xEl('x-h-body').innerHTML = aEmpty('No games match these filters.'); return; }
+  const top = [...r.heroes].filter(h => h.damage != null).sort((a, b) => b.damage - a.damage)[0];
+  xEl('x-h-ans').textContent = top
+    ? `Most damage${xEl('x-per10').checked ? ' per 10 minutes' : ' per game'}: ${top.hero} (${xFmt('damage', top.damage)}, ${top.games} game${top.games === 1 ? '' : 's'}).`
+    : '';
+  const cols = ['elims', 'assists', 'deaths', 'kd', 'damage', 'healing', 'mitigation'];
+  const head = { elims: 'E', assists: 'A', deaths: 'D', kd: 'K/D', damage: 'Damage', healing: 'Healing', mitigation: 'Mitigation' };
+  xEl('x-h-body').innerHTML = `<table><thead><tr><th>Hero</th><th>Games</th><th>Win rate</th>${cols.map(c => `<th>${head[c]}</th>`).join('')}</tr></thead><tbody>
+    ${r.heroes.map(h => `<tr>
+      <td>${xEsc(h.hero)}${h.games < 5 ? '<span class="conf-tag">low n</span>' : ''}</td>
+      <td class="num">${h.games}</td>
+      <td class="num">${xWr(h.win_rate)}</td>
+      ${cols.map(c => `<td class="num">${xFmt(c, h[c])}</td>`).join('')}
+    </tr>`).join('')}
+  </tbody></table>`;
 }
 
 // ── QUEUE ─────────────────────────────────────────────────────────────────────

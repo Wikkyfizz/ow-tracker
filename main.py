@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response
 
 import db
 import analytics
+import explore
 from models import (MatchCreate, MatchParticipant, MatchUpdate, MapUpdate, TrackedPlayer, Settings,
                     ParsedMatch, SessionCreate, SessionUpdate)
 from parser.pipeline import build_participants
@@ -723,6 +724,40 @@ def api_vs_enemy_hero():
 @app.get("/api/analytics/role-matchups")
 def api_role_matchups(role: str = "Tank", grain: str = "hero"):
     return analytics.role_matchups(role, grain)
+
+
+# ── API: explore (questions over the full scoreboard) ─────────────────────────
+
+_ROLES = {"Tank", "Damage", "Support"}
+
+
+def _check_stat(stat: str):
+    if stat not in explore.ALL_STATS:
+        raise HTTPException(400, f"Unknown stat: {stat}")
+
+
+@app.get("/api/explore/condition")
+def api_explore_condition(role: str = "Damage", stat: str = "kd", op: str = "lt", value: float = 1,
+                          per10: bool = False, hero: str = None, map: str = None):
+    _check_stat(stat)
+    if role != "any" and role not in _ROLES:
+        raise HTTPException(400, f"Unknown role: {role}")
+    if op not in ("lt", "gt"):
+        raise HTTPException(400, "op must be lt or gt")
+    return explore.condition(explore.load_games(hero, map), role, stat, op, value, per10)
+
+
+@app.get("/api/explore/versus")
+def api_explore_versus(team: str = "enemy", role: str = "Tank", per10: bool = False,
+                       hero: str = None, map: str = None):
+    if team not in ("ally", "enemy") or role not in _ROLES:
+        raise HTTPException(400, "team must be ally/enemy and role Tank/Damage/Support")
+    return explore.versus(explore.load_games(hero, map), team, role, per10)
+
+
+@app.get("/api/explore/by-hero")
+def api_explore_by_hero(per10: bool = False, map: str = None):
+    return explore.by_hero(explore.load_games(None, map), per10)
 
 
 # ── API: maps ─────────────────────────────────────────────────────────────────

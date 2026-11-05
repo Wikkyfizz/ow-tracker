@@ -218,6 +218,7 @@
     <button class="tab-btn" data-tab="a-teammates">Teammates</button>
     <button class="tab-btn" data-tab="a-bans">Bans</button>
     <button class="tab-btn" data-tab="a-stack">Stack Size</button>
+    <button class="tab-btn" data-tab="a-explore">Explore</button>
   </div>
   <div class="tab-panel active" id="a-heroes">
     <div class="question-section">
@@ -276,6 +277,53 @@
       <div class="question-header">Does playing with friends help?</div>
       <div class="question-answer" id="a-stack-ans"></div>
       <div class="a-list" id="a-stack-body"></div>
+    </div>
+  </div>
+  <div class="tab-panel" id="a-explore">
+    <div class="filters">
+      <div class="form-group"><label>Your hero</label><select id="x-hero"><option value="">Any hero</option></select></div>
+      <div class="form-group"><label>Map</label><select id="x-map"><option value="">All maps</option></select></div>
+      <label class="x-check"><input type="checkbox" id="x-per10"> Per 10 minutes</label>
+    </div>
+    <div class="x-scope" id="x-scope"></div>
+
+    <div class="question-section">
+      <div class="question-header">How often does someone have a game like this?</div>
+      <div class="x-builder">
+        Games where a
+        <select id="x-c-role">
+          <option value="Damage">damage</option><option value="Tank">tank</option>
+          <option value="Support">support</option><option value="any">any</option>
+        </select>
+        player had
+        <select id="x-c-stat"></select>
+        <select id="x-c-op"><option value="lt">below</option><option value="gt">above</option></select>
+        <input type="number" id="x-c-value" value="1" step="any">
+      </div>
+      <div class="question-answer" id="x-c-ans"></div>
+      <div class="table-wrap" id="x-c-body"></div>
+      <div class="x-hint">Your own row is never counted. K/D is eliminations ÷ deaths, so below 1 means more deaths than eliminations.</div>
+    </div>
+
+    <div class="question-section">
+      <div class="question-header">How do you compare with another player?</div>
+      <div class="x-builder">
+        You vs the
+        <select id="x-v-team"><option value="enemy">enemy</option><option value="ally">your team's</option></select>
+        <select id="x-v-role">
+          <option value="Tank">tank</option><option value="Damage">damage players</option><option value="Support">supports</option>
+        </select>
+      </div>
+      <div class="question-answer" id="x-v-ans"></div>
+      <div class="table-wrap" id="x-v-body"></div>
+      <div class="x-hint">Where a role has two players, you're compared with their average. "Most stats" counts eliminations, deaths, damage, healing and mitigation. K/D is total eliminations ÷ total deaths.</div>
+    </div>
+
+    <div class="question-section">
+      <div class="question-header">Your stats on each hero</div>
+      <div class="question-answer" id="x-h-ans"></div>
+      <div class="table-wrap" id="x-h-body"></div>
+      <div class="x-hint">Averages per game (or per 10 minutes). K/D is total eliminations ÷ total deaths. The "Your hero" filter doesn't apply here.</div>
     </div>
   </div>
 </div>

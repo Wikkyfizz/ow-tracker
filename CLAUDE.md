@@ -156,7 +156,11 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 - See `docs/ui-pass-2.md` for UI Pass 2.
 - `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored; the only backup is a manual copy from 2026-11-01 on the same disk.
 - Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
-- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`.
+- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`, `test_explore.py`.
+- Analytics → Explore tab (`explore.py`, `/api/explore/*`): questions over every scoreboard row in
+  `match_participants` (a teammate/enemy of a role meeting a stat condition, you vs another role, your
+  stats by hero; optional per-10-min). Assists above 99 count as unread: the TEAM-tab OCR sometimes
+  runs assists into the next column (1308, 8136).
 - e2e: `cd e2e; npm test` (16 tests, green 2026-11-01). `seed.mjs` generates its
   own 1920×1080 screenshot in `.tmp/inbox` — never point it at a real file; the
   save/discard flows MOVE the queue item's file.
