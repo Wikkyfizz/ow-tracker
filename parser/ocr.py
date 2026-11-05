@@ -15,6 +15,8 @@ import pytesseract
 from pytesseract import Output
 from PIL import Image, ImageFilter, ImageEnhance
 from datetime import datetime
+
+from parser import digits
 import numpy as np
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -484,20 +486,28 @@ def extract_all_rows(img: Image.Image) -> dict:
     Returns {"my_team": [...], "enemy_team": [...]}.
     Each row: {elims, assists, deaths, damage, healing, mitigation}.
 
-    Fast path: one Tesseract pass per 5-row team block bins all numbers by row
-    and column. Only cells that come back empty (e.g. dim "0", the gold
-    own-player row) fall back to the multi-strategy per-cell _ocr_number.
+    Each cell is read first by matching its digits against templates (parser.digits),
+    which unlike Tesseract doesn't drop a "1" from "11" or miss a dim grey "0". A cell
+    it can't read with confidence (or every cell, if the templates are missing) falls
+    back to Tesseract: one pass per 5-row team block that bins all numbers by row and
+    column, then the multi-strategy per-cell _ocr_number for what's still empty.
     Names are handled by parser.names, not here.
     """
-    def _read_rows(row_ys, fast_rows, found_ys):
+    def _read_rows(row_ys, fast_rows, found_ys, digit_ys):
         rows = []
-        for row_y, found_y, fast in zip(row_ys, found_ys, fast_rows):
+        for row_y, found_y, digit_y, fast in zip(row_ys, found_ys, digit_ys, fast_rows):
             # Rows with player titles sit up to ~20px off the fixed estimate; a crop
             # around the estimate can cut the digits in half, so use where they were found.
             row_y = found_y if found_y is not None else row_y
+            # The measured row centre is where the digits are; the templates need them whole.
+            cy = digit_y if digit_y is not None else row_y
             row = {}
             for s, (xl, xr) in STAT_COLS.items():
-                v = fast.get(s)
+                v = digits.read_cell(img.crop((xl, cy - ROW_HALF_H, xr, cy + ROW_HALF_H)))
+                if v is not None and s in _SMALL_STATS and v > _SMALL_STAT_MAX:
+                    v = None
+                if v is None:
+                    v = fast.get(s)
                 if v is None:
                     v = _ocr_number(img, (xl, row_y - ROW_HALF_H, xr, row_y + ROW_HALF_H))
                 row[s] = v
@@ -525,7 +535,8 @@ def extract_all_rows(img: Image.Image) -> dict:
                 alt = _ocr_team_numbers_fast(img, measured_ys)
                 if alt[2] >= binned + _DRIFT_MIN_GAIN:
                     ys, (fast_rows, found_ys, _) = measured_ys, alt
-        return _read_rows(ys, fast_rows, found_ys)
+        digit_ys = measured_ys if len(measured_ys) == len(ys) else [None] * len(ys)
+        return _read_rows(ys, fast_rows, found_ys, digit_ys)
 
     img_bgr = np.array(img.convert("RGB"))[:, :, ::-1]
     measured = _find_row_centers(img_bgr, img.width, img.height) or ([], [])

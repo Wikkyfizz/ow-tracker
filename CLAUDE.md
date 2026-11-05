@@ -77,6 +77,7 @@ Examples:
 - `save_portrait_templates.py` — batch-saves templates from labeled screenshots using `LABELS` dict
 - `build_portraits.py` — interactive tool: `--missing` lists heroes with no template, `--sheet` generates review sheets
 - `gen_unknowns_grid.py` — generates a compact grid of unconfirmed portrait crops for identification
+- `build_digit_templates.py` — rebuilds `data/digits/0-9.png` from saved games' TEAM screenshots and lists every glyph that disagrees with its saved value (usually a saved misread)
 
 ---
 
@@ -104,7 +105,9 @@ The player's row comes from a merge with SUMMARY, or from `names.find_own_row`; 
 
 `ocr._ocr_team_numbers_fast()` reads all 30 numbers of a 5-row team block in **one** Tesseract `image_to_data` pass, binning digit-words by row (y) and column (x). Only empty cells fall back to the slow multi-strategy `_ocr_number`. ~6× faster than the old per-cell approach *and* more accurate (reads dim "0"s and comma numbers the per-cell path missed). `extract_all_rows(img, read_names=False)` skips the ~2s of per-row name OCR — the pipeline passes `read_names=bool(tracked_players)` since names are only useful for tracked-player matching.
 
-Tesseract sometimes returns a row's E, A and D digits as one word ("13 0 8" → "1308"), which used to land in A and caused the impossible assists (1308, 8136). A word overlapping two columns is now skipped, and a 3-digit E/A/D is treated as unread, so those cells go to the per-cell fallback, which crops the row's y as measured from that pass's words. A full team keeps the fixed rows unless measured rows are >42px off: that only happens to the enemy team when the player's team has a leaver. Without it, the enemy tank's row was dropped and the rest shifted up a slot. Between 15 and 42px off (enemy rows ~30px low on some scoreboards), the team is read at both row sets and the measured rows win only if they bin 2+ more digit-words; otherwise the digits fall outside the fixed rows' ±28px bands, or the last row below the OCR'd block. Known weakness: the per-cell read sometimes reads "11" as "1". Checks: `test_team_numbers.py`.
+Tesseract sometimes returns a row's E, A and D digits as one word ("13 0 8" → "1308"), which used to land in A and caused the impossible assists (1308, 8136). A word overlapping two columns is now skipped, and a 3-digit E/A/D is treated as unread, so those cells go to the per-cell fallback, which crops the row's y as measured from that pass's words. A full team keeps the fixed rows unless measured rows are >42px off: that only happens to the enemy team when the player's team has a leaver. Without it, the enemy tank's row was dropped and the rest shifted up a slot. Between 15 and 42px off (enemy rows ~30px low on some scoreboards), the team is read at both row sets and the measured rows win only if they bin 2+ more digit-words; otherwise the digits fall outside the fixed rows' ±28px bands, or the last row below the OCR'd block. Checks: `test_team_numbers.py`.
+
+Every cell is read first by `parser/digits.py`, which splits it into glyphs and matches each against `data/digits/0-9.png` (the scoreboard font never changes). Tesseract at ~12px tall dropped a "1" from "11"/"17" and missed dim grey "0"s; on the 42 saved scoreboards this reader agreed with 2,412 saved cells and was right on all 96 it read differently (checked by eye, 2026-11-05). A glyph that doesn't match clearly makes the cell blank, and only then do the block pass and `_ocr_number` run, so the block pass is mostly kept for row finding. The digit crop centres on `_find_row_centers`' measured rows. Checks: `test_digits.py` (real cells in `test_data/digit_cells/`).
 
 ### Timestamps
 
@@ -159,7 +162,7 @@ Note: `heroes` table uses CSV names ("Soldier: 76", "Torbjörn", "D.Va"). Templa
 - See `docs/ui-pass-2.md` for UI Pass 2.
 - `ow_tracker.db` holds real games only; mock data lives in `ow_tracker.mock.db`. It's gitignored; the only backup is a manual copy from 2026-11-01 on the same disk.
 - Merge: a SUMMARY and TEAM screenshot become one queue item (`main._enqueue_screenshot`, `pipeline.merge_summary_team`).
-- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`, `test_explore.py`, `test_team_numbers.py`.
+- Other checks: `test_merge.py`, `test_reference_data.py`, `test_row_alignment.py`, `test_explore.py`, `test_team_numbers.py`, `test_digits.py`.
 - Analytics → Explore tab (`explore.py`, `/api/explore/*`): questions over every scoreboard row in
   `match_participants` (a teammate/enemy of a role meeting a stat condition, you vs another role, your
   stats by hero; optional per-10-min). Assists above 99 count as unread: the TEAM-tab OCR sometimes

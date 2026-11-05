@@ -28,3 +28,4 @@ player_names/
 
 # Claude Code: launch.json (how to start the app) is shared; local permissions aren't.
 .claude/settings.local.json
+ow_tracker.before-*.db
