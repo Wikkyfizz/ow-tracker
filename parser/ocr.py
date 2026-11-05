@@ -392,7 +392,7 @@ def _parse_datetime(raw: str) -> str | None:
 
 # ── TEAM tab extraction ───────────────────────────────────────────────────────
 
-def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[dict], list[int | None]]:
+def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[dict], list[int | None], int]:
     """
     Read every stat number for a whole 5-row team block in ONE Tesseract pass.
 
@@ -402,12 +402,14 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[di
     means that cell was not confidently read and the caller should fall back to
     the slower multi-strategy per-cell _ocr_number. Also returns, per row, the
     y-centre of the digits actually found there (None if none were), so that
-    fallback can crop the real row rather than the fixed estimate.
+    fallback can crop the real row rather than the fixed estimate. Last, the number
+    of digit-words that landed inside a row band: a row set that misses the digits
+    (rows drifted off it) bins fewer, which is how extract_all_rows picks between them.
 
     This collapses the previous 30-cells × up-to-7-passes-each approach (up to
     ~210 subprocess spawns per team) into a single spawn for the common case.
     """
-    empty = ([{s: None for s in STAT_COLS} for _ in row_ys], [None] * len(row_ys))
+    empty = ([{s: None for s in STAT_COLS} for _ in row_ys], [None] * len(row_ys), 0)
     x1 = STAT_COLS["elims"][0]
     x2 = STAT_COLS["mitigation"][1]
     y_top = min(row_ys) - ROW_HALF_H
@@ -422,6 +424,7 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[di
     col_centres = {s: (cl + cr) / 2.0 for s, (cl, cr) in STAT_COLS.items()}
     buckets = [{s: [] for s in STAT_COLS} for _ in row_ys]
     seen_ys = [[] for _ in row_ys]
+    binned = 0
     for i in range(len(data["text"])):
         digits = (data["text"][i] or "").strip().replace(",", "")
         if not digits.isdigit():
@@ -434,6 +437,7 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[di
         if abs(row_ys[ri] - cy) > ROW_HALF_H:   # not inside any row band — drop noise
             continue
         seen_ys[ri].append(cy)
+        binned += 1
         if _spans_columns(wl, wr):
             # Tesseract sometimes returns a row's E, A and D digits as one word
             # ("13 0 8" -> "1308"), which would land in the middle column. Skip it so
@@ -457,13 +461,15 @@ def _ocr_team_numbers_fast(img: Image.Image, row_ys: list[int]) -> tuple[list[di
                 row[s] = None if s in _SMALL_STATS and v > _SMALL_STAT_MAX else v
         out.append(row)
     found = [int(sorted(ys)[len(ys) // 2]) if ys else None for ys in seen_ys]
-    return out, found
+    return out, found, binned
 
 
 _SMALL_STATS = ("elims", "assists", "deaths")
 _SMALL_STAT_MAX = 99
 _COLUMN_OVERLAP_PX = 4  # a word reaching this far into a second column spans two
 _ROW_SHIFT_PX = int(1.5 * ROW_HALF_H)  # a full team this far off the fixed rows is measured
+_ROW_DRIFT_PX = ROW_HALF_H // 2  # further off than this, digits can leave the fixed rows' bands
+_DRIFT_MIN_GAIN = 2  # Tesseract's word count varies by about 1 between two crops of one block
 
 
 def _spans_columns(left: float, right: float) -> bool:
@@ -483,8 +489,7 @@ def extract_all_rows(img: Image.Image) -> dict:
     own-player row) fall back to the multi-strategy per-cell _ocr_number.
     Names are handled by parser.names, not here.
     """
-    def _read_rows(row_ys):
-        fast_rows, found_ys = _ocr_team_numbers_fast(img, row_ys)
+    def _read_rows(row_ys, fast_rows, found_ys):
         rows = []
         for row_y, found_y, fast in zip(row_ys, found_ys, fast_rows):
             # Rows with player titles sit up to ~20px off the fixed estimate; a crop
@@ -503,19 +508,29 @@ def extract_all_rows(img: Image.Image) -> dict:
     # 29 of 43 real scoreboards, some for the worse. A team short a player has no fixed rows,
     # and a full enemy team below a short one sits ~66px above the fixed rows, which would
     # drop its first row and shift the rest up a slot. Player titles move rows by up to ~36px,
-    # so only a bigger shift than that switches a full team to measured rows.
-    def _pick(measured_ys, fixed_ys):
-        if 0 < len(measured_ys) < 5:
-            return measured_ys
-        if len(measured_ys) == 5 and max(abs(m - f) for m, f in zip(measured_ys, fixed_ys)) > _ROW_SHIFT_PX:
-            return measured_ys
-        return fixed_ys
+    # so only a bigger shift than that switches a full team to measured rows outright.
+    # Between the two, a team drifted >14px (~30px on some enemy teams) can lose its digits
+    # outside the fixed rows' bands, or its last row below the OCR'd block, so it is read at
+    # both and the measured rows are kept only if they bin clearly more digit-words.
+    def _read_team(measured_ys, fixed_ys):
+        shift = (max(abs(m - f) for m, f in zip(measured_ys, fixed_ys))
+                 if len(measured_ys) == 5 else 0)
+        if 0 < len(measured_ys) < 5 or shift > _ROW_SHIFT_PX:
+            ys = measured_ys
+            fast_rows, found_ys, _ = _ocr_team_numbers_fast(img, ys)
+        else:
+            ys = fixed_ys
+            fast_rows, found_ys, binned = _ocr_team_numbers_fast(img, ys)
+            if shift > _ROW_DRIFT_PX:
+                alt = _ocr_team_numbers_fast(img, measured_ys)
+                if alt[2] >= binned + _DRIFT_MIN_GAIN:
+                    ys, (fast_rows, found_ys, _) = measured_ys, alt
+        return _read_rows(ys, fast_rows, found_ys)
 
     img_bgr = np.array(img.convert("RGB"))[:, :, ::-1]
     measured = _find_row_centers(img_bgr, img.width, img.height) or ([], [])
-    my_ys    = _pick(measured[0], MY_TEAM_ROW_Y)
-    enemy_ys = _pick(measured[1], ENEMY_TEAM_ROW_Y)
-    return {"my_team": _read_rows(my_ys), "enemy_team": _read_rows(enemy_ys)}
+    return {"my_team": _read_team(measured[0], MY_TEAM_ROW_Y),
+            "enemy_team": _read_team(measured[1], ENEMY_TEAM_ROW_Y)}
 
 
 def extract_player_rows(img: Image.Image, team: str = "my") -> list[dict]:
